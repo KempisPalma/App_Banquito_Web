@@ -7,7 +7,7 @@ import { Button } from '../components/ui/Button';
 import { motion } from 'framer-motion';
 
 const Loans: React.FC = () => {
-    const { loans, members, addLoan, updateLoan, deleteLoan, addLoanPayment, updateLoanPayment, deleteLoanPayment } = useBanquito();
+    const { loans, members, addLoan, updateLoan, deleteLoan, addLoanPayment, updateLoanPayment, deleteLoanPayment, currentUser } = useBanquito();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false);
     const [editingLoanId, setEditingLoanId] = useState<string | null>(null);
@@ -32,6 +32,8 @@ const Loans: React.FC = () => {
     const [loanFilter, setLoanFilter] = useState<'all' | 'pending' | 'paid' | 'due-soon'>('all');
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const [paymentToDelete, setPaymentToDelete] = useState<{ loanId: string; paymentId: string; amount: number } | null>(null);
+    const [deleteLoanConfirmOpen, setDeleteLoanConfirmOpen] = useState(false);
+    const [loanToDelete, setLoanToDelete] = useState<{ loanId: string; borrowerName: string; amount: number } | null>(null);
 
     // Auto-calculate end date (1 month)
     useEffect(() => {
@@ -157,9 +159,16 @@ const Loans: React.FC = () => {
         }
     };
 
-    const handleDeleteLoan = (loanId: string, borrowerName: string) => {
-        if (window.confirm(`¿Estás seguro de que deseas eliminar el préstamo de "${borrowerName}"? Esta acción no se puede deshacer.`)) {
-            deleteLoan(loanId);
+    const handleDeleteLoan = (loanId: string, borrowerName: string, amount: number) => {
+        setLoanToDelete({ loanId, borrowerName, amount });
+        setDeleteLoanConfirmOpen(true);
+    };
+
+    const confirmDeleteLoan = () => {
+        if (loanToDelete) {
+            deleteLoan(loanToDelete.loanId);
+            setDeleteLoanConfirmOpen(false);
+            setLoanToDelete(null);
         }
     };
 
@@ -225,10 +234,12 @@ const Loans: React.FC = () => {
                     <h1 className="text-3xl font-bold text-slate-900">Préstamos</h1>
                     <p className="text-slate-500 mt-1">Gestiona préstamos, intereses y plazos.</p>
                 </div>
-                <Button onClick={() => setIsModalOpen(true)} className="shadow-lg shadow-orange-500/20 bg-orange-600 hover:bg-orange-700 focus:ring-orange-500">
-                    <Plus size={20} className="mr-2" />
-                    Nuevo Préstamo
-                </Button>
+                {currentUser?.role !== 'socio' && (
+                    <Button onClick={() => setIsModalOpen(true)} className="shadow-lg shadow-orange-500/20 bg-orange-600 hover:bg-orange-700 focus:ring-orange-500">
+                        <Plus size={20} className="mr-2" />
+                        Nuevo Préstamo
+                    </Button>
+                )}
             </div>
 
             {/* Filter Buttons */}
@@ -276,12 +287,19 @@ const Loans: React.FC = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {loans.filter(loan => {
+                    // Filter by loan status
                     if (loanFilter === 'all') return true;
                     if (loanFilter === 'paid') return loan.status === 'paid';
                     if (loanFilter === 'pending') return loan.status !== 'paid';
                     if (loanFilter === 'due-soon') {
                         const daysUntilDue = Math.ceil((new Date(loan.endDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
                         return daysUntilDue > 0 && daysUntilDue <= 7 && loan.status !== 'paid';
+                    }
+                    return true;
+                }).filter(loan => {
+                    // Filter by member if user is 'socio'
+                    if (currentUser?.role === 'socio' && currentUser.memberId) {
+                        return loan.borrowerType === 'member' && loan.memberId === currentUser.memberId;
                     }
                     return true;
                 }).map((loan, index) => {
@@ -446,22 +464,26 @@ const Loans: React.FC = () => {
 
                                 <div className="bg-white border-t border-slate-100 px-6 py-3">
                                     <div className="flex items-center justify-end gap-2">
-                                        <button
-                                            onClick={() => openEditModal(loan)}
-                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 hover:border-blue-300 transition-all hover:shadow-sm"
-                                            title="Editar préstamo"
-                                        >
-                                            <Edit2 size={14} />
-                                            <span>Editar</span>
-                                        </button>
-                                        <button
-                                            onClick={() => handleDeleteLoan(loan.id, borrowerName || '')}
-                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 hover:border-red-300 transition-all hover:shadow-sm"
-                                            title="Eliminar préstamo"
-                                        >
-                                            <Trash2 size={14} />
-                                            <span>Eliminar</span>
-                                        </button>
+                                        {currentUser?.role !== 'socio' && (
+                                            <>
+                                                <button
+                                                    onClick={() => openEditModal(loan)}
+                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 hover:border-blue-300 transition-all hover:shadow-sm"
+                                                    title="Editar préstamo"
+                                                >
+                                                    <Edit2 size={14} />
+                                                    <span>Editar</span>
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDeleteLoan(loan.id, borrowerName || '', loan.amount)}
+                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 hover:border-red-300 transition-all hover:shadow-sm"
+                                                    title="Eliminar préstamo"
+                                                >
+                                                    <Trash2 size={14} />
+                                                    <span>Eliminar</span>
+                                                </button>
+                                            </>
+                                        )}
                                         <button
                                             onClick={() => openPaymentModal(loan.id)}
                                             disabled={loan.status === 'paid'}
@@ -699,6 +721,52 @@ const Loans: React.FC = () => {
                         <Button
                             type="button"
                             onClick={confirmDeletePayment}
+                            className="flex-1 bg-red-600 hover:bg-red-700"
+                        >
+                            Sí, Eliminar
+                        </Button>
+                    </div>
+                </div>
+            </Modal>
+
+            {/* Delete Loan Confirmation Modal */}
+            <Modal
+                isOpen={deleteLoanConfirmOpen}
+                onClose={() => {
+                    setDeleteLoanConfirmOpen(false);
+                    setLoanToDelete(null);
+                }}
+                title=""
+            >
+                <div className="text-center py-4">
+                    <div className="mx-auto w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mb-4">
+                        <AlertTriangle className="text-red-600" size={32} />
+                    </div>
+                    <h3 className="text-xl font-bold text-slate-900 mb-2">¿Eliminar este préstamo?</h3>
+                    <p className="text-slate-600 mb-1">Esta acción no se puede deshacer.</p>
+                    {loanToDelete && (
+                        <div className="mt-4 p-4 bg-slate-50 rounded-xl">
+                            <p className="text-sm text-slate-500">Préstamo de</p>
+                            <p className="text-lg font-bold text-slate-900 mb-2">{loanToDelete.borrowerName}</p>
+                            <p className="text-sm text-slate-500">Monto prestado</p>
+                            <p className="text-2xl font-bold text-slate-900">${loanToDelete.amount.toFixed(2)}</p>
+                        </div>
+                    )}
+                    <div className="flex gap-3 mt-6">
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            onClick={() => {
+                                setDeleteLoanConfirmOpen(false);
+                                setLoanToDelete(null);
+                            }}
+                            className="flex-1"
+                        >
+                            Cancelar
+                        </Button>
+                        <Button
+                            type="button"
+                            onClick={confirmDeleteLoan}
                             className="flex-1 bg-red-600 hover:bg-red-700"
                         >
                             Sí, Eliminar

@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useBanquito } from '../context/BanquitoContext';
 import { Card } from '../components/ui/Card';
-import { Lock, User, Eye, EyeOff } from 'lucide-react';
+import { Lock, User, Eye, EyeOff, UserPlus } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 
 const Login: React.FC = () => {
     const [username, setUsername] = useState('');
@@ -11,6 +12,8 @@ const Login: React.FC = () => {
     const [error, setError] = useState('');
     const { login } = useBanquito();
     const navigate = useNavigate();
+    const location = useLocation();
+    const successMessage = (location.state as any)?.message;
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -34,7 +37,7 @@ const Login: React.FC = () => {
                 <Card className="shadow-xl border-none">
                     <form onSubmit={handleSubmit} className="space-y-6">
                         {error && (
-                            <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm font-medium text-center">
+                            <div className="bg-red-50 border border-red-200 text-red-600 p-3 rounded-lg text-sm font-medium text-center">
                                 {error}
                             </div>
                         )}
@@ -88,7 +91,26 @@ const Login: React.FC = () => {
                             Iniciar Sesión
                         </button>
                     </form>
+
+                    <div className="mt-6 pt-6 border-t border-slate-100">
+                        <button
+                            onClick={() => navigate('/register')}
+                            className="w-full flex items-center justify-center gap-2 py-2.5 px-4 border border-primary-200 rounded-xl text-sm font-semibold text-primary-700 bg-primary-50 hover:bg-primary-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all"
+                        >
+                            <UserPlus size={18} />
+                            Crear Cuenta de Socio
+                        </button>
+                        <p className="text-xs text-slate-500 text-center mt-3">
+                            ¿Eres socio y no tienes cuenta? Regístrate aquí
+                        </p>
+                    </div>
                 </Card>
+
+                {successMessage && (
+                    <div className="mt-4 p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-700 text-sm text-center font-medium">
+                        {successMessage}
+                    </div>
+                )}
 
                 <p className="text-center text-xs text-slate-400 mt-8">
                     Sistema de Gestión de Banquito Local

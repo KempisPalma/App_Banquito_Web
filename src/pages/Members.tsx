@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useBanquito } from '../context/BanquitoContext';
-import { Search, Edit2, Trash2, UserPlus, Phone, Calendar, CheckCircle, XCircle, Plus, X as XIcon, CreditCard } from 'lucide-react';
+import { Search, Edit2, Trash2, UserPlus, Phone, Calendar, CheckCircle, XCircle, Plus, X as XIcon, CreditCard, AlertTriangle } from 'lucide-react';
 import Modal from '../components/Modal';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -18,45 +18,62 @@ const Members: React.FC = () => {
     });
     const [searchTerm, setSearchTerm] = useState('');
     const [cedulaError, setCedulaError] = useState('');
+    const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+    const [memberToDelete, setMemberToDelete] = useState<{ id: string; name: string; cedula?: string } | null>(null);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         setCedulaError('');
 
-        // Check for duplicate cedula
-        if (formData.cedula.trim()) {
-            const duplicate = members.find(m =>
-                m.cedula === formData.cedula.trim() && m.id !== editingId
-            );
-            if (duplicate) {
-                setCedulaError('Ya existe un socio con esta cédula');
-                return;
-            }
+        // Validate name
+        if (!formData.name.trim()) {
+            return;
         }
 
-        // Filter out empty aliases
-        const cleanAliases = formData.aliases.filter(a => a.trim() !== '');
+        // Validate cedula (now required)
+        if (!formData.cedula.trim()) {
+            setCedulaError('La cédula es obligatoria');
+            return;
+        }
+
+        // Validate cedula format: only numbers and exactly 10 digits
+        const cedulaRegex = /^\d{10}$/;
+        if (!cedulaRegex.test(formData.cedula.trim())) {
+            setCedulaError('La cédula debe contener exactamente 10 dígitos numéricos');
+            return;
+        }
+
+        // Check for duplicate cedula
+        const duplicate = members.find(m =>
+            m.cedula === formData.cedula.trim() && m.id !== editingId
+        );
+        if (duplicate) {
+            setCedulaError('Ya existe un socio con esta cédula');
+            return;
+        }
+
+        // Process aliases: auto-number empty ones
+        const processedAliases = formData.aliases.map((alias, index) => {
+            if (alias.trim() === '') {
+                return `Acción ${index + 1}`;
+            }
+            return alias.trim();
+        });
 
         if (editingId) {
             updateMember(editingId, {
-                name: formData.name,
-                cedula: formData.cedula.trim() || undefined,
-                aliases: cleanAliases.length > 0 ? cleanAliases : undefined,
+                name: formData.name.trim(),
+                cedula: formData.cedula.trim(),
+                aliases: processedAliases,
                 phone: formData.phone.trim() || undefined
             });
         } else {
-            const newMember = {
-                name: formData.name,
-                cedula: formData.cedula.trim() || undefined,
-                aliases: cleanAliases.length > 0 ? cleanAliases : undefined,
-                phone: formData.phone.trim() || undefined
-            };
-            addMember(newMember.name, undefined, newMember.phone);
-            // Update with full data
-            const lastMember = members[members.length - 1];
-            if (lastMember) {
-                updateMember(lastMember.id, newMember);
-            }
+            addMember(
+                formData.name.trim(),
+                formData.cedula.trim(),
+                processedAliases,
+                formData.phone.trim() || undefined
+            );
         }
         handleClose();
     };
@@ -72,9 +89,16 @@ const Members: React.FC = () => {
         setIsModalOpen(true);
     };
 
-    const handleDelete = (id: string) => {
-        if (confirm('¿Estás seguro de eliminar este socio?')) {
-            deleteMember(id);
+    const handleDelete = (member: typeof members[0]) => {
+        setMemberToDelete({ id: member.id, name: member.name, cedula: member.cedula });
+        setDeleteConfirmOpen(true);
+    };
+
+    const confirmDelete = () => {
+        if (memberToDelete) {
+            deleteMember(memberToDelete.id);
+            setDeleteConfirmOpen(false);
+            setMemberToDelete(null);
         }
     };
 
@@ -229,7 +253,7 @@ const Members: React.FC = () => {
                                                         <Edit2 size={16} />
                                                     </button>
                                                     <button
-                                                        onClick={() => handleDelete(member.id)}
+                                                        onClick={() => handleDelete(member)}
                                                         className="p-2 rounded-lg bg-red-600 text-white hover:bg-red-700 shadow-lg hover:shadow-xl transition-all hover:scale-110"
                                                         title="Eliminar socio"
                                                     >
@@ -266,18 +290,27 @@ const Members: React.FC = () => {
 
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                            Cédula (Opcional)
+                            Cédula *
                         </label>
                         <input
                             type="text"
+                            required
                             value={formData.cedula}
                             onChange={(e) => {
-                                setFormData({ ...formData, cedula: e.target.value });
-                                setCedulaError('');
+                                // Only allow numbers
+                                const value = e.target.value.replace(/\D/g, '');
+                                // Limit to 10 digits
+                                if (value.length <= 10) {
+                                    setFormData({ ...formData, cedula: value });
+                                    setCedulaError('');
+                                }
                             }}
                             className={`w-full px-4 py-2.5 bg-slate-50 border rounded-xl focus:ring-2 focus:ring-primary-500/20 transition-all ${cedulaError ? 'border-red-500' : 'border-slate-200 focus:border-primary-500'
                                 }`}
                             placeholder="Ej. 1234567890"
+                            maxLength={10}
+                            inputMode="numeric"
+                            pattern="\d{10}"
                         />
                         {cedulaError && (
                             <p className="text-red-600 text-sm mt-1">{cedulaError}</p>
@@ -348,6 +381,56 @@ const Members: React.FC = () => {
                         </Button>
                     </div>
                 </form>
+            </Modal>
+
+            {/* Delete Member Confirmation Modal */}
+            <Modal
+                isOpen={deleteConfirmOpen}
+                onClose={() => {
+                    setDeleteConfirmOpen(false);
+                    setMemberToDelete(null);
+                }}
+                title=""
+            >
+                <div className="text-center py-4">
+                    <div className="mx-auto w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mb-4">
+                        <AlertTriangle className="text-red-600" size={32} />
+                    </div>
+                    <h3 className="text-xl font-bold text-slate-900 mb-2">¿Eliminar este socio?</h3>
+                    <p className="text-slate-600 mb-1">Esta acción no se puede deshacer.</p>
+                    {memberToDelete && (
+                        <div className="mt-4 p-4 bg-slate-50 rounded-xl">
+                            <p className="text-sm text-slate-500">Socio</p>
+                            <p className="text-lg font-bold text-slate-900 mb-2">{memberToDelete.name}</p>
+                            {memberToDelete.cedula && (
+                                <>
+                                    <p className="text-sm text-slate-500">Cédula</p>
+                                    <p className="text-base font-semibold text-slate-700">{memberToDelete.cedula}</p>
+                                </>
+                            )}
+                        </div>
+                    )}
+                    <div className="flex gap-3 mt-6">
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            onClick={() => {
+                                setDeleteConfirmOpen(false);
+                                setMemberToDelete(null);
+                            }}
+                            className="flex-1"
+                        >
+                            Cancelar
+                        </Button>
+                        <Button
+                            type="button"
+                            onClick={confirmDelete}
+                            className="flex-1 bg-red-600 hover:bg-red-700"
+                        >
+                            Sí, Eliminar
+                        </Button>
+                    </div>
+                </div>
             </Modal>
         </div>
     );

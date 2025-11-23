@@ -77,7 +77,8 @@ export interface User {
     username: string;
     password?: string; // In a real app, this would be hashed. Here we might store it plain or simple hash for demo.
     name: string;
-    role: 'admin' | 'user';
+    role: 'admin' | 'user' | 'socio';
+    memberId?: string; // Links user account to member record (for socio role)
     permissions: Permission[];
     active: boolean;
 }

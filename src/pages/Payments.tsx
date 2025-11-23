@@ -14,7 +14,7 @@ type PaymentRow = {
 };
 
 const Payments: React.FC = () => {
-    const { members, weeklyPayments, monthlyFees, recordWeeklyPayment, recordMonthlyFee } = useBanquito();
+    const { members, weeklyPayments, monthlyFees, recordWeeklyPayment, recordMonthlyFee, currentUser } = useBanquito();
     const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
@@ -24,7 +24,12 @@ const Payments: React.FC = () => {
     ];
 
     // Generate payment rows - one row per action (or one row if no actions)
-    const paymentRows: PaymentRow[] = members.flatMap(member => {
+    // Filter by current user if they are a 'socio'
+    const filteredMembers = currentUser?.role === 'socio' && currentUser.memberId
+        ? members.filter(m => m.id === currentUser.memberId)
+        : members;
+
+    const paymentRows: PaymentRow[] = filteredMembers.flatMap(member => {
         if (member.aliases && member.aliases.length > 0) {
             // Create a row for each action
             return member.aliases.map(alias => ({
@@ -67,6 +72,9 @@ const Payments: React.FC = () => {
     };
 
     const handleWeeklyChange = (memberId: string, week: number, value: string, actionAlias?: string) => {
+        // Prevent editing if user is socio
+        if (currentUser?.role === 'socio') return;
+
         if (value === '') {
             recordWeeklyPayment(memberId, selectedYear, selectedMonth, week, 0, actionAlias);
             return;
@@ -78,6 +86,9 @@ const Payments: React.FC = () => {
     };
 
     const handleMonthlyFeeChange = (memberId: string, value: string, actionAlias?: string) => {
+        // Prevent editing if user is socio
+        if (currentUser?.role === 'socio') return;
+
         if (value === '') {
             recordMonthlyFee(memberId, selectedYear, selectedMonth, 0, actionAlias);
             return;
@@ -247,6 +258,7 @@ const Payments: React.FC = () => {
                                                             onKeyDown={(e) => handleKeyDown(e, rowIndex, colIndex)}
                                                             className="w-20 pl-5 pr-2 py-2 text-center border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all bg-white hover:bg-slate-50 text-slate-700 font-medium"
                                                             placeholder="0"
+                                                            disabled={currentUser?.role === 'socio'}
                                                         />
                                                     </div>
                                                 </td>
@@ -265,6 +277,7 @@ const Payments: React.FC = () => {
                                                     onKeyDown={(e) => handleKeyDown(e, rowIndex, 5)}
                                                     className="w-20 pl-5 pr-2 py-2 text-center border border-purple-200 rounded-lg focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500 transition-all bg-white hover:bg-purple-50 text-purple-700 font-medium"
                                                     placeholder="0"
+                                                    disabled={currentUser?.role === 'socio'}
                                                 />
                                             </div>
                                         </td>

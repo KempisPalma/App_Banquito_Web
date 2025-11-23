@@ -11,6 +11,7 @@ import Activities from './pages/Activities';
 import Loans from './pages/Loans';
 import AdminUsers from './pages/AdminUsers';
 import GeneralReport from './pages/GeneralReport';
+import MemberRegister from './pages/MemberRegister';
 import ErrorBoundary from './components/ErrorBoundary';
 
 function App() {
@@ -20,6 +21,7 @@ function App() {
         <Router>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<MemberRegister />} />
             <Route path="/" element={
               <ProtectedRoute>
                 <Layout>
@@ -28,28 +30,28 @@ function App() {
               </ProtectedRoute>
             } />
             <Route path="/members" element={
-              <ProtectedRoute permission="manage_members">
+              <ProtectedRoute requiredPermission="manage_members">
                 <Layout>
                   <Members />
                 </Layout>
               </ProtectedRoute>
             } />
             <Route path="/payments" element={
-              <ProtectedRoute permission="manage_payments">
+              <ProtectedRoute>
                 <Layout>
                   <Payments />
                 </Layout>
               </ProtectedRoute>
             } />
             <Route path="/activities" element={
-              <ProtectedRoute permission="manage_activities">
+              <ProtectedRoute>
                 <Layout>
                   <Activities />
                 </Layout>
               </ProtectedRoute>
             } />
             <Route path="/loans" element={
-              <ProtectedRoute permission="manage_loans">
+              <ProtectedRoute>
                 <Layout>
                   <Loans />
                 </Layout>
@@ -63,7 +65,7 @@ function App() {
               </ProtectedRoute>
             } />
             <Route path="/admin/users" element={
-              <ProtectedRoute permission="admin">
+              <ProtectedRoute requiredPermission="admin">
                 <Layout>
                   <AdminUsers />
                 </Layout>

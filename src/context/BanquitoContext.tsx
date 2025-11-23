@@ -16,11 +16,12 @@ interface BanquitoContextType {
     // Auth Actions
     login: (username: string, password: string) => boolean;
     logout: () => void;
+    registerMember: (cedula: string, username: string, password: string) => { success: boolean; error?: string };
     addUser: (user: Omit<User, 'id'>) => void;
     updateUser: (id: string, data: Partial<User>) => void;
     deleteUser: (id: string) => void;
 
-    addMember: (name: string, alias?: string, phone?: string) => void;
+    addMember: (name: string, cedula?: string, aliases?: string[], phone?: string) => void;
     updateMember: (id: string, data: Partial<Member>) => void;
     deleteMember: (id: string) => void;
 
@@ -28,6 +29,7 @@ interface BanquitoContextType {
     recordMonthlyFee: (memberId: string, year: number, month: number, amount: number) => void;
 
     addActivity: (activity: Omit<Activity, 'id'>) => void;
+    updateActivity: (id: string, data: Partial<Activity>) => void;
     deleteActivity: (id: string) => void;
     updateMemberActivity: (data: MemberActivity) => void;
 
@@ -183,12 +185,46 @@ export const BanquitoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setUsers(users.filter(u => u.id !== id));
     };
 
-    const addMember = (name: string, alias?: string, phone?: string, cedula?: string, aliases?: string[]) => {
+    const registerMember = (cedula: string, username: string, password: string): { success: boolean; error?: string } => {
+        // Validate cedula exists in members
+        const member = members.find(m => m.cedula === cedula);
+        if (!member) {
+            return { success: false, error: 'No se encontró un socio registrado con esta cédula' };
+        }
+
+        // Check if member already has an account
+        const existingUserForMember = users.find(u => u.memberId === member.id);
+        if (existingUserForMember) {
+            return { success: false, error: 'Este socio ya tiene una cuenta creada' };
+        }
+
+        // Check if username is already taken
+        const existingUsername = users.find(u => u.username === username);
+        if (existingUsername) {
+            return { success: false, error: 'Este nombre de usuario ya está en uso' };
+        }
+
+        // Create new user account for member
+        const newUser: User = {
+            id: crypto.randomUUID(),
+            username,
+            password,
+            name: member.name,
+            role: 'socio',
+            memberId: member.id,
+            permissions: [],
+            active: true
+        };
+        setUsers([...users, newUser]);
+        return { success: true };
+    };
+
+    const addMember = (name: string, cedula?: string, aliases?: string[], phone?: string) => {
         const newMember: Member = {
             id: crypto.randomUUID(),
             name,
             cedula,
-            aliases: aliases || (alias ? [alias] : undefined), // Support both old alias and new aliases
+            aliases,
             phone,
             active: true,
             joinedDate: new Date().toISOString(),
@@ -264,6 +300,10 @@ export const BanquitoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const updateMemberActivity = (data: MemberActivity) => {
         setMemberActivities(memberActivities.map(ma => ma.id === data.id ? data : ma));
+    };
+
+    const updateActivity = (id: string, data: Partial<Activity>) => {
+        setActivities(activities.map(a => a.id === id ? { ...a, ...data } : a));
     };
 
     const deleteActivity = (id: string) => {
@@ -356,10 +396,10 @@ export const BanquitoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         <BanquitoContext.Provider value={{
             members, weeklyPayments, monthlyFees, activities, memberActivities, loans,
             users, currentUser,
-            login, logout, addUser, updateUser, deleteUser,
+            login, logout, registerMember, addUser, updateUser, deleteUser,
             addMember, updateMember, deleteMember,
             recordWeeklyPayment, recordMonthlyFee,
-            addActivity, deleteActivity, updateMemberActivity,
+            addActivity, updateActivity, deleteActivity, updateMemberActivity,
             addLoan, updateLoan, deleteLoan, addLoanPayment, updateLoanPayment, deleteLoanPayment
         }}>
             {children}

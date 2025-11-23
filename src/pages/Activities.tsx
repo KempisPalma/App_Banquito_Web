@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useBanquito } from '../context/BanquitoContext';
-import { Plus, Gift, DollarSign, Calendar, Ticket, CheckCircle, AlertCircle, Trash2 } from 'lucide-react';
+import { Plus, Gift, DollarSign, Calendar, Ticket, CheckCircle, AlertCircle, Trash2, Edit2, AlertTriangle } from 'lucide-react';
 import Modal from '../components/Modal';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -10,6 +10,8 @@ import { clsx } from 'clsx';
 const Activities: React.FC = () => {
     const { activities, memberActivities, members, addActivity, deleteActivity, updateMemberActivity } = useBanquito();
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isEditMode, setIsEditMode] = useState(false);
+    const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
     const [formData, setFormData] = useState({
         name: '',
         date: '',
@@ -22,17 +24,55 @@ const Activities: React.FC = () => {
     const [selectedYear, setSelectedYear] = useState<number>(currentDate.getFullYear());
     const [selectedMonth, setSelectedMonth] = useState<number>(currentDate.getMonth());
     const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
+    const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+    const [activityToDelete, setActivityToDelete] = useState<{ id: string; name: string; date: string } | null>(null);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        addActivity({
-            name: formData.name,
-            date: formData.date,
-            ticketPrice: Number(formData.ticketPrice),
-            totalTicketsPerMember: Number(formData.totalTicketsPerMember)
-        });
+        if (isEditMode && editingActivityId) {
+            // Update existing activity
+            const activity = activities.find(a => a.id === editingActivityId);
+            if (activity) {
+                const updatedActivity = {
+                    ...activity,
+                    name: formData.name,
+                    date: formData.date,
+                    ticketPrice: Number(formData.ticketPrice),
+                    totalTicketsPerMember: Number(formData.totalTicketsPerMember)
+                };
+                // Since there's no updateActivity in context, we need to delete and re-add
+                deleteActivity(editingActivityId);
+                addActivity(updatedActivity);
+            }
+        } else {
+            // Create new activity
+            addActivity({
+                name: formData.name,
+                date: formData.date,
+                ticketPrice: Number(formData.ticketPrice),
+                totalTicketsPerMember: Number(formData.totalTicketsPerMember)
+            });
+        }
+        handleCloseModal();
+    };
+
+    const handleCloseModal = () => {
         setIsModalOpen(false);
+        setIsEditMode(false);
+        setEditingActivityId(null);
         setFormData({ name: '', date: '', ticketPrice: 0, totalTicketsPerMember: 10 });
+    };
+
+    const handleEditActivity = (activity: typeof activities[0]) => {
+        setFormData({
+            name: activity.name,
+            date: activity.date,
+            ticketPrice: activity.ticketPrice,
+            totalTicketsPerMember: activity.totalTicketsPerMember
+        });
+        setEditingActivityId(activity.id);
+        setIsEditMode(true);
+        setIsModalOpen(true);
     };
 
     const handleTicketUpdate = (memberActivityId: string, field: 'ticketsSold' | 'ticketsReturned', value: number) => {
@@ -54,10 +94,17 @@ const Activities: React.FC = () => {
         updateMemberActivity({ ...ma, ...updates });
     };
 
-    const handleDeleteActivity = (activityId: string, activityName: string) => {
-        if (window.confirm(`¿Estás seguro de que deseas eliminar la actividad "${activityName}"? Esta acción no se puede deshacer.`)) {
-            deleteActivity(activityId);
+    const handleDeleteActivity = (activity: typeof activities[0]) => {
+        setActivityToDelete({ id: activity.id, name: activity.name, date: activity.date });
+        setDeleteConfirmOpen(true);
+    };
+
+    const confirmDeleteActivity = () => {
+        if (activityToDelete) {
+            deleteActivity(activityToDelete.id);
             setSelectedActivityId(null);
+            setDeleteConfirmOpen(false);
+            setActivityToDelete(null);
         }
     };
 
@@ -149,27 +196,46 @@ const Activities: React.FC = () => {
                                         : "border-slate-200 bg-white text-slate-600 hover:border-purple-300 hover:shadow-md"
                                 )}
                             >
-                                <div className="flex justify-between items-start mb-1">
-                                    <div className="font-bold text-lg">{activity.name}</div>
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleDeleteActivity(activity.id, activity.name);
-                                        }}
-                                        className={clsx(
-                                            "p-1 rounded-lg transition-colors",
-                                            selectedActivity?.id === activity.id
-                                                ? "hover:bg-purple-700 text-purple-100"
-                                                : "hover:bg-red-50 text-slate-400 hover:text-red-600"
-                                        )}
-                                        title="Eliminar actividad"
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
-                                </div>
-                                <div className={clsx("text-xs flex items-center", selectedActivity?.id === activity.id ? "text-purple-100" : "text-slate-400")}>
-                                    <Calendar size={12} className="mr-1.5" />
-                                    {new Date(activity.date).toLocaleDateString()}
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <div className="font-bold text-lg mb-1">{activity.name}</div>
+                                        <div className={clsx("text-xs flex items-center", selectedActivity?.id === activity.id ? "text-purple-100" : "text-slate-400")}>
+                                            <Calendar size={12} className="mr-1.5" />
+                                            {new Date(activity.date).toLocaleDateString()}
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col gap-1">
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDeleteActivity(activity);
+                                            }}
+                                            className={clsx(
+                                                "p-1.5 rounded-lg transition-colors",
+                                                selectedActivity?.id === activity.id
+                                                    ? "hover:bg-purple-700 text-purple-100"
+                                                    : "hover:bg-red-50 text-slate-400 hover:text-red-600"
+                                            )}
+                                            title="Eliminar actividad"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleEditActivity(activity);
+                                            }}
+                                            className={clsx(
+                                                "p-1.5 rounded-lg transition-colors",
+                                                selectedActivity?.id === activity.id
+                                                    ? "hover:bg-purple-700 text-purple-100"
+                                                    : "hover:bg-blue-50 text-slate-400 hover:text-blue-600"
+                                            )}
+                                            title="Editar actividad"
+                                        >
+                                            <Edit2 size={16} />
+                                        </button>
+                                    </div>
                                 </div>
                             </motion.button>
                         ))}
@@ -243,7 +309,15 @@ const Activities: React.FC = () => {
                                                                 </div>
                                                                 <div>
                                                                     <div className="font-medium text-slate-900">{member.name}</div>
-                                                                    {member.alias && <div className="text-xs text-slate-500">{member.alias}</div>}
+                                                                    {member.aliases && member.aliases.length > 0 && (
+                                                                        <div className="flex flex-wrap gap-1 mt-1">
+                                                                            {member.aliases.map((alias, idx) => (
+                                                                                <span key={idx} className="text-xs text-purple-600 font-medium bg-purple-50 px-2 py-0.5 rounded-full">
+                                                                                    {alias}
+                                                                                </span>
+                                                                            ))}
+                                                                        </div>
+                                                                    )}
                                                                 </div>
                                                             </div>
                                                         </td>
@@ -265,8 +339,8 @@ const Activities: React.FC = () => {
                                                         </td>
                                                         <td className="px-6 py-5 text-center bg-orange-50/50">
                                                             <span className={`font-bold ${((selectedActivity.totalTicketsPerMember * selectedActivity.ticketPrice) - totalToPay) > 0
-                                                                    ? 'text-orange-700'
-                                                                    : 'text-emerald-700'
+                                                                ? 'text-orange-700'
+                                                                : 'text-emerald-700'
                                                                 }`}>
                                                                 ${((selectedActivity.totalTicketsPerMember * selectedActivity.ticketPrice) - totalToPay).toFixed(2)}
                                                             </span>
@@ -298,8 +372,8 @@ const Activities: React.FC = () => {
 
             <Modal
                 isOpen={isModalOpen}
-                onClose={() => setIsModalOpen(false)}
-                title="Nueva Actividad"
+                onClose={handleCloseModal}
+                title={isEditMode ? "Editar Actividad" : "Nueva Actividad"}
             >
                 <form onSubmit={handleSubmit} className="space-y-5">
                     <div>
@@ -355,7 +429,7 @@ const Activities: React.FC = () => {
                         <Button
                             type="button"
                             variant="ghost"
-                            onClick={() => setIsModalOpen(false)}
+                            onClick={handleCloseModal}
                         >
                             Cancelar
                         </Button>
@@ -363,10 +437,62 @@ const Activities: React.FC = () => {
                             type="submit"
                             className="bg-purple-600 hover:bg-purple-700 focus:ring-purple-500"
                         >
-                            Crear Actividad
+                            {isEditMode ? "Guardar Cambios" : "Crear Actividad"}
                         </Button>
                     </div>
                 </form>
+            </Modal>
+
+            {/* Delete Activity Confirmation Modal */}
+            <Modal
+                isOpen={deleteConfirmOpen}
+                onClose={() => {
+                    setDeleteConfirmOpen(false);
+                    setActivityToDelete(null);
+                }}
+                title=""
+            >
+                <div className="text-center py-4">
+                    <div className="mx-auto w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mb-4">
+                        <AlertTriangle className="text-red-600" size={32} />
+                    </div>
+                    <h3 className="text-xl font-bold text-slate-900 mb-2">¿Eliminar esta actividad?</h3>
+                    <p className="text-slate-600 mb-1">Esta acción no se puede deshacer.</p>
+                    {activityToDelete && (
+                        <div className="mt-4 p-4 bg-slate-50 rounded-xl">
+                            <p className="text-sm text-slate-500">Actividad</p>
+                            <p className="text-lg font-bold text-slate-900 mb-2">{activityToDelete.name}</p>
+                            <p className="text-sm text-slate-500">Fecha</p>
+                            <p className="text-base font-semibold text-slate-700">
+                                {new Date(activityToDelete.date).toLocaleDateString('es-EC', {
+                                    year: 'numeric',
+                                    month: 'long',
+                                    day: 'numeric'
+                                })}
+                            </p>
+                        </div>
+                    )}
+                    <div className="flex gap-3 mt-6">
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            onClick={() => {
+                                setDeleteConfirmOpen(false);
+                                setActivityToDelete(null);
+                            }}
+                            className="flex-1"
+                        >
+                            Cancelar
+                        </Button>
+                        <Button
+                            type="button"
+                            onClick={confirmDeleteActivity}
+                            className="flex-1 bg-red-600 hover:bg-red-700"
+                        >
+                            Sí, Eliminar
+                        </Button>
+                    </div>
+                </div>
             </Modal>
         </div>
     );
