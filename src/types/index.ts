@@ -65,3 +65,15 @@ export interface LoanPayment {
     paymentType: 'principal' | 'interest'; // Where the payment is applied
     date: string;
 }
+
+export type Permission = 'manage_payments' | 'manage_loans' | 'manage_activities' | 'manage_members' | 'admin';
+
+export interface User {
+    id: string;
+    username: string;
+    password?: string; // In a real app, this would be hashed. Here we might store it plain or simple hash for demo.
+    name: string;
+    role: 'admin' | 'user';
+    permissions: Permission[];
+    active: boolean;
+}

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import type { Member, WeeklyPayment, MonthlyFee, Activity, MemberActivity, Loan, LoanPayment } from '../types';
+import type { Member, WeeklyPayment, MonthlyFee, Activity, MemberActivity, Loan, LoanPayment, User } from '../types';
 
 interface BanquitoContextType {
     members: Member[];
@@ -8,6 +8,17 @@ interface BanquitoContextType {
     activities: Activity[];
     memberActivities: MemberActivity[];
     loans: Loan[];
+
+    // Auth State
+    users: User[];
+    currentUser: User | null;
+
+    // Auth Actions
+    login: (username: string, password: string) => boolean;
+    logout: () => void;
+    addUser: (user: Omit<User, 'id'>) => void;
+    updateUser: (id: string, data: Partial<User>) => void;
+    deleteUser: (id: string) => void;
 
     addMember: (name: string, alias?: string, phone?: string) => void;
     updateMember: (id: string, data: Partial<Member>) => void;
@@ -32,33 +43,94 @@ const BanquitoContext = createContext<BanquitoContextType | undefined>(undefined
 
 export const BanquitoProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [members, setMembers] = useState<Member[]>(() => {
-        const saved = localStorage.getItem('banquito_members');
-        return saved ? JSON.parse(saved) : [];
+        try {
+            const saved = localStorage.getItem('banquito_members');
+            return saved ? JSON.parse(saved) : [];
+        } catch (e) {
+            console.error("Error parsing members:", e);
+            return [];
+        }
     });
 
     const [weeklyPayments, setWeeklyPayments] = useState<WeeklyPayment[]>(() => {
-        const saved = localStorage.getItem('banquito_weekly_payments');
-        return saved ? JSON.parse(saved) : [];
+        try {
+            const saved = localStorage.getItem('banquito_weekly_payments');
+            return saved ? JSON.parse(saved) : [];
+        } catch (e) {
+            console.error("Error parsing weeklyPayments:", e);
+            return [];
+        }
     });
 
     const [monthlyFees, setMonthlyFees] = useState<MonthlyFee[]>(() => {
-        const saved = localStorage.getItem('banquito_monthly_fees');
-        return saved ? JSON.parse(saved) : [];
+        try {
+            const saved = localStorage.getItem('banquito_monthly_fees');
+            return saved ? JSON.parse(saved) : [];
+        } catch (e) {
+            console.error("Error parsing monthlyFees:", e);
+            return [];
+        }
     });
 
     const [activities, setActivities] = useState<Activity[]>(() => {
-        const saved = localStorage.getItem('banquito_activities');
-        return saved ? JSON.parse(saved) : [];
+        try {
+            const saved = localStorage.getItem('banquito_activities');
+            return saved ? JSON.parse(saved) : [];
+        } catch (e) {
+            console.error("Error parsing activities:", e);
+            return [];
+        }
     });
 
     const [memberActivities, setMemberActivities] = useState<MemberActivity[]>(() => {
-        const saved = localStorage.getItem('banquito_member_activities');
-        return saved ? JSON.parse(saved) : [];
+        try {
+            const saved = localStorage.getItem('banquito_member_activities');
+            return saved ? JSON.parse(saved) : [];
+        } catch (e) {
+            console.error("Error parsing memberActivities:", e);
+            return [];
+        }
     });
 
     const [loans, setLoans] = useState<Loan[]>(() => {
-        const saved = localStorage.getItem('banquito_loans');
-        return saved ? JSON.parse(saved) : [];
+        try {
+            const saved = localStorage.getItem('banquito_loans');
+            return saved ? JSON.parse(saved) : [];
+        } catch (e) {
+            console.error("Error parsing loans:", e);
+            return [];
+        }
+    });
+
+    // Auth State Initialization
+    const [users, setUsers] = useState<User[]>(() => {
+        try {
+            const saved = localStorage.getItem('banquito_users');
+            if (saved) return JSON.parse(saved);
+        } catch (e) {
+            console.error("Error parsing users:", e);
+        }
+
+        // Default Admin User
+        return [{
+            id: 'admin-default',
+            username: 'admin',
+            password: 'admin', // Plain text for this demo as requested
+            name: 'Administrador',
+            role: 'admin',
+            permissions: ['admin'],
+            active: true
+        }];
+    });
+
+    const [currentUser, setCurrentUser] = useState<User | null>(() => {
+        try {
+            const saved = localStorage.getItem('banquito_current_user');
+            return saved ? JSON.parse(saved) : null;
+        } catch (e) {
+            console.error("Error parsing currentUser:", e);
+            return null;
+        }
     });
 
     // Persistence Effects
@@ -68,8 +140,49 @@ export const BanquitoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     useEffect(() => localStorage.setItem('banquito_activities', JSON.stringify(activities)), [activities]);
     useEffect(() => localStorage.setItem('banquito_member_activities', JSON.stringify(memberActivities)), [memberActivities]);
     useEffect(() => localStorage.setItem('banquito_loans', JSON.stringify(loans)), [loans]);
+    useEffect(() => localStorage.setItem('banquito_users', JSON.stringify(users)), [users]);
+    useEffect(() => {
+        if (currentUser) {
+            localStorage.setItem('banquito_current_user', JSON.stringify(currentUser));
+        } else {
+            localStorage.removeItem('banquito_current_user');
+        }
+    }, [currentUser]);
 
     // Actions
+    const login = (username: string, password: string) => {
+        const user = users.find(u => u.username === username && u.password === password && u.active);
+        if (user) {
+            setCurrentUser(user);
+            return true;
+        }
+        return false;
+    };
+
+    const logout = () => {
+        setCurrentUser(null);
+    };
+
+    const addUser = (userData: Omit<User, 'id'>) => {
+        const newUser: User = {
+            ...userData,
+            id: crypto.randomUUID(),
+        };
+        setUsers([...users, newUser]);
+    };
+
+    const updateUser = (id: string, data: Partial<User>) => {
+        setUsers(users.map(u => u.id === id ? { ...u, ...data } : u));
+        // Update current user if it's the same person
+        if (currentUser && currentUser.id === id) {
+            setCurrentUser({ ...currentUser, ...data });
+        }
+    };
+
+    const deleteUser = (id: string) => {
+        setUsers(users.filter(u => u.id !== id));
+    };
+
     const addMember = (name: string, alias?: string, phone?: string) => {
         const newMember: Member = {
             id: crypto.randomUUID(),
@@ -239,6 +352,8 @@ export const BanquitoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return (
         <BanquitoContext.Provider value={{
             members, weeklyPayments, monthlyFees, activities, memberActivities, loans,
+            users, currentUser,
+            login, logout, addUser, updateUser, deleteUser,
             addMember, updateMember, deleteMember,
             recordWeeklyPayment, recordMonthlyFee,
             addActivity, deleteActivity, updateMemberActivity,

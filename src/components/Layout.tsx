@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, DollarSign, Gift, CreditCard, Menu, X, Bell, Search, ChevronLeft, ChevronRight, AlertCircle, Clock, Settings, Download, Upload } from 'lucide-react';
+import { LayoutDashboard, Users, DollarSign, Gift, CreditCard, Menu, X, Bell, Search, ChevronLeft, ChevronRight, AlertCircle, Clock, Settings, Download, Upload, LogOut, Shield } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { clsx } from 'clsx';
 import { useBanquito } from '../context/BanquitoContext';
@@ -8,19 +8,26 @@ import { useBanquito } from '../context/BanquitoContext';
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const location = useLocation();
     const navigate = useNavigate();
-    const { loans, members } = useBanquito();
+    const { loans, members, currentUser, logout } = useBanquito();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
     const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState(false);
     const [isNotificationOpen, setIsNotificationOpen] = React.useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
 
     const navItems = [
-        { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-        { path: '/members', label: 'Socios', icon: Users },
-        { path: '/payments', label: 'Pagos', icon: DollarSign },
-        { path: '/activities', label: 'Actividades', icon: Gift },
-        { path: '/loans', label: 'Préstamos', icon: CreditCard },
+        { path: '/', label: 'Dashboard', icon: LayoutDashboard, permission: null },
+        { path: '/members', label: 'Socios', icon: Users, permission: 'manage_members' },
+        { path: '/payments', label: 'Pagos', icon: DollarSign, permission: 'manage_payments' },
+        { path: '/activities', label: 'Actividades', icon: Gift, permission: 'manage_activities' },
+        { path: '/loans', label: 'Préstamos', icon: CreditCard, permission: 'manage_loans' },
+        { path: '/admin/users', label: 'Usuarios', icon: Shield, permission: 'admin' },
     ];
+
+    const filteredNavItems = navItems.filter(item => {
+        if (!currentUser) return false;
+        if (!item.permission) return true; // Dashboard is for everyone
+        return currentUser.role === 'admin' || currentUser.permissions.includes(item.permission as any);
+    });
 
     // Calculate loan notifications
     const loanNotifications = React.useMemo(() => {
@@ -115,15 +122,20 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
             {/* Desktop Sidebar */}
             <aside className={clsx(
-                "hidden md:flex flex-col m-4 rounded-3xl glass-sidebar z-20 relative transition-all duration-300",
-                isSidebarCollapsed ? "w-20" : "w-72"
+                "hidden md:flex flex-col transition-all duration-500 ease-in-out z-30 bg-white/90 backdrop-blur-xl shadow-2xl shadow-slate-200/50 border border-white/20",
+                isSidebarCollapsed
+                    ? "fixed left-6 top-1/2 -translate-y-1/2 h-auto w-20 rounded-full py-6"
+                    : "fixed left-4 top-4 bottom-4 w-72 rounded-3xl"
             )}>
                 <button
                     onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-                    className="absolute -right-3 top-8 w-6 h-6 rounded-full bg-white border border-slate-200 shadow-md flex items-center justify-center text-slate-600 hover:bg-slate-50 transition-colors z-30"
+                    className={clsx(
+                        "absolute w-6 h-6 rounded-full bg-white border border-slate-200 shadow-md flex items-center justify-center text-slate-600 hover:bg-slate-50 transition-colors z-30",
+                        isSidebarCollapsed ? "left-1/2 -translate-x-1/2 -bottom-3" : "-right-3 top-8"
+                    )}
                     title={isSidebarCollapsed ? "Expandir" : "Contraer"}
                 >
-                    {isSidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+                    {isSidebarCollapsed ? <ChevronRight size={14} className="rotate-90" /> : <ChevronLeft size={14} />}
                 </button>
 
                 {!isSidebarCollapsed && (
@@ -135,34 +147,52 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                     </div>
                 )}
 
-                <nav className="flex-1 px-4 space-y-2 py-4">
-                    {navItems.map((item) => {
+                <nav className={clsx(
+                    "flex-1 space-y-2",
+                    isSidebarCollapsed ? "flex flex-col items-center justify-center gap-6 py-4" : "px-4 py-4"
+                )}>
+                    {filteredNavItems.map((item) => {
                         const Icon = item.icon;
+                        const isActive = location.pathname === item.path;
+
                         return (
                             <Link
                                 key={item.path}
                                 to={item.path}
                                 className={clsx(
-                                    "flex items-center px-4 py-3 rounded-xl transition-all duration-300 group relative overflow-hidden",
-                                    isSidebarCollapsed ? "justify-center" : "space-x-3",
-                                    location.pathname === item.path
-                                        ? "bg-gradient-to-r from-primary-600 to-primary-500 text-white shadow-lg shadow-primary-500/30"
-                                        : "text-slate-600 hover:text-primary-600 hover:bg-gradient-to-r hover:from-primary-50 hover:to-purple-50 hover:shadow-md"
+                                    "flex items-center transition-all duration-300 group relative",
+                                    isSidebarCollapsed
+                                        ? "w-12 h-12 justify-center"
+                                        : clsx(
+                                            "px-4 py-3 rounded-xl overflow-hidden space-x-3",
+                                            isActive
+                                                ? "bg-gradient-to-r from-primary-600 to-primary-500 text-white shadow-lg shadow-primary-500/30"
+                                                : "text-slate-600 hover:text-primary-600 hover:bg-gradient-to-r hover:from-primary-50 hover:to-purple-50 hover:shadow-md"
+                                        )
                                 )}
                                 title={isSidebarCollapsed ? item.label : undefined}
                             >
-                                {/* Animated background on hover */}
-                                {location.pathname !== item.path && (
+                                {/* Collapsed: Animated "Ball" Background */}
+                                {isSidebarCollapsed && isActive && (
+                                    <motion.div
+                                        layoutId="active-nav-ball"
+                                        className="absolute inset-0 bg-primary-600 rounded-full shadow-lg shadow-primary-500/40"
+                                        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                                    />
+                                )}
+
+                                {/* Expanded: Animated background on hover */}
+                                {!isSidebarCollapsed && !isActive && (
                                     <div className="absolute inset-0 bg-gradient-to-r from-primary-100/0 via-primary-100/50 to-primary-100/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-in-out" />
                                 )}
 
                                 <Icon
-                                    size={22}
+                                    size={isSidebarCollapsed ? 24 : 22}
                                     className={clsx(
                                         "relative z-10 transition-all duration-300",
-                                        location.pathname === item.path
-                                            ? "drop-shadow-sm"
-                                            : "group-hover:scale-110 group-hover:rotate-3"
+                                        isActive
+                                            ? (isSidebarCollapsed ? "text-white scale-110" : "drop-shadow-sm")
+                                            : (isSidebarCollapsed ? "text-slate-400 group-hover:text-primary-600" : "group-hover:scale-110 group-hover:rotate-3")
                                     )}
                                 />
                                 {!isSidebarCollapsed && (
@@ -170,26 +200,32 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                                         {item.label}
                                     </span>
                                 )}
-
-                                {/* Active indicator */}
-                                {location.pathname === item.path && !isSidebarCollapsed && (
-                                    <div className="absolute right-2 w-1.5 h-8 bg-white/40 rounded-full" />
-                                )}
                             </Link>
                         );
                     })}
                 </nav>
 
-                {!isSidebarCollapsed && (
-                    <div className="p-6 border-t border-white/5">
-                        <div className="flex items-center space-x-3 p-3 rounded-xl bg-white/30 backdrop-blur-sm">
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center text-white font-bold">
-                                U
+                {!isSidebarCollapsed && currentUser && (
+                    <div className="p-6 border-t border-slate-100">
+                        <div className="flex items-center space-x-3 p-3 rounded-xl bg-slate-50/50 hover:bg-slate-100 transition-colors cursor-pointer">
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center text-white font-bold uppercase shadow-md">
+                                {currentUser.name.charAt(0)}
                             </div>
-                            <div className="flex-1">
-                                <p className="text-sm font-semibold text-slate-800">Usuario</p>
-                                <p className="text-xs text-slate-500">Administrador</p>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-sm font-bold text-slate-900 truncate">{currentUser.name}</p>
+                                <p className="text-xs font-semibold text-slate-500 truncate capitalize">{currentUser.role === 'admin' ? 'Administrador' : 'Usuario'}</p>
                             </div>
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    logout();
+                                    navigate('/login');
+                                }}
+                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-all"
+                                title="Cerrar Sesión"
+                            >
+                                <LogOut size={18} />
+                            </button>
                         </div>
                     </div>
                 )}
@@ -220,7 +256,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                             <h1 className="text-2xl font-extrabold bg-gradient-to-r from-primary-400 to-primary-200 bg-clip-text text-transparent tracking-tight">Banquito</h1>
                         </div>
                         <nav className="space-y-2">
-                            {navItems.map((item) => {
+                            {filteredNavItems.map((item) => {
                                 const Icon = item.icon;
                                 return (
                                     <Link
@@ -245,12 +281,15 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             </AnimatePresence>
 
             {/* Main Content */}
-            <div className="flex-1 flex flex-col overflow-hidden relative z-10">
+            <div className={clsx(
+                "flex-1 flex flex-col overflow-hidden relative z-10 transition-all duration-500 ease-in-out",
+                isSidebarCollapsed ? "ml-32" : "ml-80"
+            )}>
                 {/* Top Bar */}
                 <header className="h-20 px-8 flex items-center justify-between">
                     <div className="flex items-center space-x-4">
                         <h2 className="text-2xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">
-                            {navItems.find(i => i.path === location.pathname)?.label || 'Dashboard'}
+                            {filteredNavItems.find(i => i.path === location.pathname)?.label || 'Dashboard'}
                         </h2>
                     </div>
                     <div className="flex items-center space-x-4">
