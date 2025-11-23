@@ -183,11 +183,12 @@ export const BanquitoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setUsers(users.filter(u => u.id !== id));
     };
 
-    const addMember = (name: string, alias?: string, phone?: string) => {
+    const addMember = (name: string, alias?: string, phone?: string, cedula?: string, aliases?: string[]) => {
         const newMember: Member = {
             id: crypto.randomUUID(),
             name,
-            alias,
+            cedula,
+            aliases: aliases || (alias ? [alias] : undefined), // Support both old alias and new aliases
             phone,
             active: true,
             joinedDate: new Date().toISOString(),
@@ -203,10 +204,11 @@ export const BanquitoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setMembers(members.filter(m => m.id !== id));
     };
 
-    const recordWeeklyPayment = (memberId: string, year: number, month: number, week: number, amount: number) => {
+    const recordWeeklyPayment = (memberId: string, year: number, month: number, week: number, amount: number, actionAlias?: string) => {
         const newPayment: WeeklyPayment = {
             id: crypto.randomUUID(),
             memberId,
+            actionAlias,
             year,
             month,
             week,
@@ -214,7 +216,7 @@ export const BanquitoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             date: new Date().toISOString(),
         };
         // Check if exists and update or add
-        const exists = weeklyPayments.find(p => p.memberId === memberId && p.year === year && p.month === month && p.week === week);
+        const exists = weeklyPayments.find(p => p.memberId === memberId && p.year === year && p.month === month && p.week === week && p.actionAlias === actionAlias);
         if (exists) {
             setWeeklyPayments(weeklyPayments.map(p => p.id === exists.id ? { ...p, amount } : p));
         } else {
@@ -222,16 +224,17 @@ export const BanquitoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
     };
 
-    const recordMonthlyFee = (memberId: string, year: number, month: number, amount: number) => {
+    const recordMonthlyFee = (memberId: string, year: number, month: number, amount: number, actionAlias?: string) => {
         const newFee: MonthlyFee = {
             id: crypto.randomUUID(),
             memberId,
+            actionAlias,
             year,
             month,
             amount,
             date: new Date().toISOString(),
         };
-        const exists = monthlyFees.find(f => f.memberId === memberId && f.year === year && f.month === month);
+        const exists = monthlyFees.find(f => f.memberId === memberId && f.year === year && f.month === month && f.actionAlias === actionAlias);
         if (exists) {
             setMonthlyFees(monthlyFees.map(f => f.id === exists.id ? { ...f, amount } : f));
         } else {

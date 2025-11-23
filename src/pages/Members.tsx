@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useBanquito } from '../context/BanquitoContext';
-import { Search, Edit2, Trash2, UserPlus, Phone, Calendar, CheckCircle, XCircle } from 'lucide-react';
+import { Search, Edit2, Trash2, UserPlus, Phone, Calendar, CheckCircle, XCircle, Plus, X as XIcon, CreditCard } from 'lucide-react';
 import Modal from '../components/Modal';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -12,24 +12,63 @@ const Members: React.FC = () => {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [formData, setFormData] = useState({
         name: '',
-        alias: '',
+        cedula: '',
+        aliases: [''] as string[],
         phone: ''
     });
     const [searchTerm, setSearchTerm] = useState('');
+    const [cedulaError, setCedulaError] = useState('');
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+        setCedulaError('');
+
+        // Check for duplicate cedula
+        if (formData.cedula.trim()) {
+            const duplicate = members.find(m =>
+                m.cedula === formData.cedula.trim() && m.id !== editingId
+            );
+            if (duplicate) {
+                setCedulaError('Ya existe un socio con esta cédula');
+                return;
+            }
+        }
+
+        // Filter out empty aliases
+        const cleanAliases = formData.aliases.filter(a => a.trim() !== '');
+
         if (editingId) {
-            updateMember(editingId, formData);
+            updateMember(editingId, {
+                name: formData.name,
+                cedula: formData.cedula.trim() || undefined,
+                aliases: cleanAliases.length > 0 ? cleanAliases : undefined,
+                phone: formData.phone.trim() || undefined
+            });
         } else {
-            addMember(formData.name, formData.alias, formData.phone);
+            const newMember = {
+                name: formData.name,
+                cedula: formData.cedula.trim() || undefined,
+                aliases: cleanAliases.length > 0 ? cleanAliases : undefined,
+                phone: formData.phone.trim() || undefined
+            };
+            addMember(newMember.name, undefined, newMember.phone);
+            // Update with full data
+            const lastMember = members[members.length - 1];
+            if (lastMember) {
+                updateMember(lastMember.id, newMember);
+            }
         }
         handleClose();
     };
 
     const handleEdit = (member: any) => {
         setEditingId(member.id);
-        setFormData({ name: member.name, alias: member.alias || '', phone: member.phone || '' });
+        setFormData({
+            name: member.name,
+            cedula: member.cedula || '',
+            aliases: member.aliases && member.aliases.length > 0 ? member.aliases : [''],
+            phone: member.phone || ''
+        });
         setIsModalOpen(true);
     };
 
@@ -42,12 +81,29 @@ const Members: React.FC = () => {
     const handleClose = () => {
         setIsModalOpen(false);
         setEditingId(null);
-        setFormData({ name: '', alias: '', phone: '' });
+        setFormData({ name: '', cedula: '', aliases: [''], phone: '' });
+        setCedulaError('');
+    };
+
+    const addAliasField = () => {
+        setFormData({ ...formData, aliases: [...formData.aliases, ''] });
+    };
+
+    const removeAliasField = (index: number) => {
+        const newAliases = formData.aliases.filter((_, i) => i !== index);
+        setFormData({ ...formData, aliases: newAliases.length > 0 ? newAliases : [''] });
+    };
+
+    const updateAlias = (index: number, value: string) => {
+        const newAliases = [...formData.aliases];
+        newAliases[index] = value;
+        setFormData({ ...formData, aliases: newAliases });
     };
 
     const filteredMembers = members.filter(m =>
         m.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (m.alias && m.alias.toLowerCase().includes(searchTerm.toLowerCase()))
+        (m.aliases && m.aliases.some(a => a.toLowerCase().includes(searchTerm.toLowerCase()))) ||
+        (m.cedula && m.cedula.includes(searchTerm))
     );
 
     return (
@@ -69,7 +125,7 @@ const Members: React.FC = () => {
                         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={20} />
                         <input
                             type="text"
-                            placeholder="Buscar socio por nombre o alias..."
+                            placeholder="Buscar por nombre, alias o cédula..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all"
@@ -81,7 +137,8 @@ const Members: React.FC = () => {
                     <table className="w-full text-left">
                         <thead className="bg-slate-50/50 text-slate-500 font-semibold text-sm uppercase tracking-wider">
                             <tr>
-                                <th className="px-8 py-5">Socio / Alias</th>
+                                <th className="px-8 py-5">Socio / Acciones</th>
+                                <th className="px-6 py-5">Cédula</th>
                                 <th className="px-6 py-5">Contacto</th>
                                 <th className="px-6 py-5">Fecha Ingreso</th>
                                 <th className="px-6 py-5">Estado</th>
@@ -90,7 +147,7 @@ const Members: React.FC = () => {
                         <tbody className="divide-y divide-slate-100">
                             {filteredMembers.length === 0 ? (
                                 <tr>
-                                    <td colSpan={4} className="px-8 py-12 text-center text-slate-500">
+                                    <td colSpan={5} className="px-8 py-12 text-center text-slate-500">
                                         <div className="flex flex-col items-center justify-center">
                                             <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4 text-slate-400">
                                                 <Search size={32} />
@@ -116,13 +173,28 @@ const Members: React.FC = () => {
                                                 </div>
                                                 <div>
                                                     <div className="font-medium text-slate-900">{member.name}</div>
-                                                    {member.alias && (
-                                                        <div className="text-xs text-purple-600 font-medium bg-purple-50 px-2 py-0.5 rounded-full inline-block mt-0.5">
-                                                            {member.alias}
+                                                    {member.aliases && member.aliases.length > 0 && (
+                                                        <div className="flex flex-wrap gap-1 mt-1">
+                                                            {member.aliases.map((alias, idx) => (
+                                                                <span key={idx} className="text-xs text-purple-600 font-medium bg-purple-50 px-2 py-0.5 rounded-full">
+                                                                    {alias}
+                                                                </span>
+                                                            ))}
                                                         </div>
                                                     )}
-                                                    <span className="text-xs text-slate-400 block mt-0.5">ID: {member.id.slice(0, 8)}</span>
                                                 </div>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-5">
+                                            <div className="flex items-center text-slate-600">
+                                                {member.cedula ? (
+                                                    <>
+                                                        <CreditCard size={16} className="mr-2 text-slate-400" />
+                                                        {member.cedula}
+                                                    </>
+                                                ) : (
+                                                    <span className="text-slate-400 text-sm">Sin registro</span>
+                                                )}
                                             </div>
                                         </td>
                                         <td className="px-6 py-5">
@@ -181,7 +253,7 @@ const Members: React.FC = () => {
             >
                 <form onSubmit={handleSubmit} className="space-y-5">
                     <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1.5">Nombre Completo</label>
+                        <label className="block text-sm font-medium text-slate-700 mb-1.5">Nombre Completo *</label>
                         <input
                             type="text"
                             required
@@ -191,16 +263,67 @@ const Members: React.FC = () => {
                             placeholder="Ej. Juan Pérez"
                         />
                     </div>
+
                     <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1.5">Alias (Opcional)</label>
+                        <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                            Cédula (Opcional)
+                        </label>
                         <input
                             type="text"
-                            value={formData.alias}
-                            onChange={(e) => setFormData({ ...formData, alias: e.target.value })}
-                            className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all"
-                            placeholder="Ej. Acción 1"
+                            value={formData.cedula}
+                            onChange={(e) => {
+                                setFormData({ ...formData, cedula: e.target.value });
+                                setCedulaError('');
+                            }}
+                            className={`w-full px-4 py-2.5 bg-slate-50 border rounded-xl focus:ring-2 focus:ring-primary-500/20 transition-all ${cedulaError ? 'border-red-500' : 'border-slate-200 focus:border-primary-500'
+                                }`}
+                            placeholder="Ej. 1234567890"
                         />
+                        {cedulaError && (
+                            <p className="text-red-600 text-sm mt-1">{cedulaError}</p>
+                        )}
                     </div>
+
+                    <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                            <label className="block text-sm font-medium text-slate-700">
+                                Acciones/Letras (Opcional)
+                                <span className="text-xs text-slate-500 ml-2">Ej: Acción 1, Acción 2</span>
+                            </label>
+                            <button
+                                type="button"
+                                onClick={addAliasField}
+                                className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1"
+                            >
+                                <Plus size={14} />
+                                Agregar
+                            </button>
+                        </div>
+                        <div className="space-y-2">
+                            {formData.aliases.map((alias, index) => (
+                                <div key={index} className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        value={alias}
+                                        onChange={(e) => updateAlias(index, e.target.value)}
+                                        className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all"
+                                        placeholder={`Acción ${index + 1}`}
+                                    />
+                                    {formData.aliases.length > 1 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => removeAliasField(index)}
+                                            className="p-2.5 text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+                                            title="Eliminar"
+                                        >
+                                            <XIcon size={18} />
+                                        </button>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1.5">Teléfono (Opcional)</label>
                         <input
@@ -211,6 +334,7 @@ const Members: React.FC = () => {
                             placeholder="Ej. 0991234567"
                         />
                     </div>
+
                     <div className="flex justify-end space-x-3 pt-4">
                         <Button
                             type="button"
@@ -219,9 +343,7 @@ const Members: React.FC = () => {
                         >
                             Cancelar
                         </Button>
-                        <Button
-                            type="submit"
-                        >
+                        <Button type="submit">
                             {editingId ? 'Guardar Cambios' : 'Crear Socio'}
                         </Button>
                     </div>

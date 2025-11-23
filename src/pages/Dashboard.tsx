@@ -5,26 +5,71 @@ import { Users, DollarSign, TrendingUp, AlertCircle, ArrowUpRight, ArrowDownRigh
 import { Card } from '../components/ui/Card';
 import { motion } from 'framer-motion';
 
-const StatCard: React.FC<{ title: string; value: string; icon: any; color: string; trend?: string }> = ({ title, value, icon: Icon, color, trend }) => (
-    <Card className="relative overflow-hidden group hover:-translate-y-1 transition-transform duration-300">
-        <div className={`absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity ${color.replace('bg-', 'text-')}`}>
-            <Icon size={80} />
-        </div>
-        <div className="relative z-10">
-            <div className={`w-12 h-12 rounded-xl ${color} bg-opacity-10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300`}>
-                <Icon size={24} className={color.replace('bg-', 'text-')} />
-            </div>
-            <p className="text-sm text-slate-500 font-medium mb-1">{title}</p>
-            <h3 className="text-3xl font-bold text-slate-800 tracking-tight">{value}</h3>
-            {trend && (
-                <div className="flex items-center mt-2 text-sm text-emerald-600 font-medium">
-                    <TrendingUp size={16} className="mr-1" />
-                    <span>{trend}</span>
+const StatCard: React.FC<{ title: string; value: string; icon: any; color: string; trend?: string }> = ({ title, value, icon: Icon, color, trend }) => {
+    // Map the input color class to a style object
+    const getStyle = (colorClass: string) => {
+        switch (colorClass) {
+            case 'bg-blue-500': return {
+                gradient: 'from-blue-500 to-blue-600',
+                shadow: 'shadow-blue-500/30',
+                light: 'bg-blue-50',
+                text: 'text-blue-600'
+            };
+            case 'bg-emerald-500': return {
+                gradient: 'from-emerald-500 to-emerald-600',
+                shadow: 'shadow-emerald-500/30',
+                light: 'bg-emerald-50',
+                text: 'text-emerald-600'
+            };
+            case 'bg-orange-500': return {
+                gradient: 'from-orange-500 to-orange-600',
+                shadow: 'shadow-orange-500/30',
+                light: 'bg-orange-50',
+                text: 'text-orange-600'
+            };
+            case 'bg-purple-500': return {
+                gradient: 'from-purple-500 to-purple-600',
+                shadow: 'shadow-purple-500/30',
+                light: 'bg-purple-50',
+                text: 'text-purple-600'
+            };
+            default: return {
+                gradient: 'from-slate-500 to-slate-600',
+                shadow: 'shadow-slate-500/30',
+                light: 'bg-slate-50',
+                text: 'text-slate-600'
+            };
+        }
+    };
+
+    const style = getStyle(color);
+
+    return (
+        <Card className="relative overflow-hidden group hover:-translate-y-2 transition-all duration-300 hover:shadow-xl border border-slate-100">
+            {/* Background Decoration */}
+            <div className={`absolute -right-6 -top-6 w-32 h-32 rounded-full opacity-0 group-hover:opacity-10 transition-opacity duration-500 bg-gradient-to-br ${style.gradient}`} />
+
+            <div className="relative z-10">
+                <div className="flex justify-between items-start mb-4">
+                    <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${style.gradient} flex items-center justify-center shadow-lg ${style.shadow} group-hover:scale-110 transition-transform duration-300`}>
+                        <Icon size={28} className="text-white" />
+                    </div>
+                    {trend && (
+                        <div className="flex items-center px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-100 text-xs font-bold text-emerald-600">
+                            <TrendingUp size={14} className="mr-1" />
+                            {trend}
+                        </div>
+                    )}
                 </div>
-            )}
-        </div>
-    </Card>
-);
+
+                <div className="space-y-1">
+                    <p className="text-sm text-slate-500 font-medium">{title}</p>
+                    <h3 className="text-3xl font-black text-slate-800 tracking-tight">{value}</h3>
+                </div>
+            </div>
+        </Card>
+    );
+};
 
 const Dashboard: React.FC = () => {
     const navigate = useNavigate();

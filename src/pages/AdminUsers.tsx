@@ -25,6 +25,7 @@ const AdminUsers: React.FC = () => {
         { value: 'manage_loans', label: 'Gestionar Préstamos' },
         { value: 'manage_activities', label: 'Gestionar Actividades' },
         { value: 'manage_members', label: 'Gestionar Socios' },
+        { value: 'view_reports', label: 'Ver Reportes' },
         { value: 'admin', label: 'Administrador Total' },
     ];
 

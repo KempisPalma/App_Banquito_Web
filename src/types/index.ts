@@ -1,7 +1,8 @@
 export interface Member {
     id: string;
     name: string;
-    alias?: string;
+    cedula?: string; // ID card number - optional but unique
+    aliases?: string[]; // Multiple aliases/actions (e.g., ["Acción 1", "Acción 2"])
     phone?: string;
     active: boolean;
     joinedDate: string;
@@ -10,6 +11,7 @@ export interface Member {
 export interface WeeklyPayment {
     id: string;
     memberId: string;
+    actionAlias?: string; // Which action/letra made this payment
     year: number;
     month: number; // 0-11
     week: number; // 1-5
@@ -20,6 +22,7 @@ export interface WeeklyPayment {
 export interface MonthlyFee {
     id: string;
     memberId: string;
+    actionAlias?: string; // Which action/letra paid this fee
     year: number;
     month: number;
     amount: number; // Usually 5
@@ -48,6 +51,7 @@ export interface MemberActivity {
 export interface Loan {
     id: string;
     memberId?: string; // Optional if external
+    actionAlias?: string; // Which action/letra took this loan (for members)
     clientName?: string; // For external borrowers
     borrowerType: 'member' | 'external';
     amount: number;
@@ -66,7 +70,7 @@ export interface LoanPayment {
     date: string;
 }
 
-export type Permission = 'manage_payments' | 'manage_loans' | 'manage_activities' | 'manage_members' | 'admin';
+export type Permission = 'manage_payments' | 'manage_loans' | 'manage_activities' | 'manage_members' | 'view_reports' | 'admin';
 
 export interface User {
     id: string;
