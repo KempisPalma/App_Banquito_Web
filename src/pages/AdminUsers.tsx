@@ -13,7 +13,7 @@ const AdminUsers: React.FC = () => {
         username: '',
         password: '',
         name: '',
-        role: 'user' as 'user' | 'admin',
+        role: 'user' as 'user' | 'admin' | 'socio',
         permissions: [] as Permission[],
         active: true
     };
@@ -194,6 +194,10 @@ const AdminUsers: React.FC = () => {
                                                 {user.role === 'admin' ? (
                                                     <span className="inline-flex items-center px-2 py-1 rounded-md bg-purple-50 text-purple-700 text-xs font-medium ring-1 ring-inset ring-purple-700/10">
                                                         Administrador
+                                                    </span>
+                                                ) : user.role === 'socio' ? (
+                                                    <span className="inline-flex items-center px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 text-xs font-medium ring-1 ring-inset ring-emerald-700/10">
+                                                        Socio
                                                     </span>
                                                 ) : (
                                                     user.permissions.map(perm => (

@@ -73,7 +73,7 @@ const StatCard: React.FC<{ title: string; value: string; icon: any; color: strin
 
 const Dashboard: React.FC = () => {
     const navigate = useNavigate();
-    const { members, weeklyPayments, loans, monthlyFees } = useBanquito();
+    const { members, weeklyPayments, loans, monthlyFees, currentUser } = useBanquito();
 
     // Calculate real-time stats
     const totalSavings = React.useMemo(() => {
@@ -282,27 +282,55 @@ const Dashboard: React.FC = () => {
                     <Card className="h-full bg-gradient-to-br from-primary-900 to-primary-800 text-white border-none">
                         <h3 className="text-lg font-bold mb-4">Acciones Rápidas</h3>
                         <div className="space-y-3">
-                            <button
-                                onClick={() => navigate('/payments')}
-                                className="w-full py-3 px-4 rounded-xl bg-white/10 hover:bg-white/20 transition-colors flex items-center justify-between group"
-                            >
-                                <span className="font-medium">Registrar Pago</span>
-                                <ArrowUpRight size={18} className="text-primary-200 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
-                            </button>
-                            <button
-                                onClick={() => navigate('/loans')}
-                                className="w-full py-3 px-4 rounded-xl bg-white/10 hover:bg-white/20 transition-colors flex items-center justify-between group"
-                            >
-                                <span className="font-medium">Nuevo Préstamo</span>
-                                <ArrowDownRight size={18} className="text-primary-200 group-hover:translate-x-1 group-hover:translate-y-1 transition-transform" />
-                            </button>
-                            <button
-                                onClick={() => navigate('/members')}
-                                className="w-full py-3 px-4 rounded-xl bg-white/10 hover:bg-white/20 transition-colors flex items-center justify-between group"
-                            >
-                                <span className="font-medium">Agregar Socio</span>
-                                <Users size={18} className="text-primary-200 group-hover:scale-110 transition-transform" />
-                            </button>
+                            {currentUser?.role === 'socio' ? (
+                                <>
+                                    <button
+                                        onClick={() => navigate('/payments')}
+                                        className="w-full py-3 px-4 rounded-xl bg-white/10 hover:bg-white/20 transition-colors flex items-center justify-between group"
+                                    >
+                                        <span className="font-medium">Mis Pagos</span>
+                                        <ArrowUpRight size={18} className="text-primary-200 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
+                                    </button>
+                                    <button
+                                        onClick={() => navigate('/loans')}
+                                        className="w-full py-3 px-4 rounded-xl bg-white/10 hover:bg-white/20 transition-colors flex items-center justify-between group"
+                                    >
+                                        <span className="font-medium">Mis Préstamos</span>
+                                        <ArrowDownRight size={18} className="text-primary-200 group-hover:translate-x-1 group-hover:translate-y-1 transition-transform" />
+                                    </button>
+                                    <button
+                                        onClick={() => navigate('/activities')}
+                                        className="w-full py-3 px-4 rounded-xl bg-white/10 hover:bg-white/20 transition-colors flex items-center justify-between group"
+                                    >
+                                        <span className="font-medium">Mis Actividades</span>
+                                        <Activity size={18} className="text-primary-200 group-hover:scale-110 transition-transform" />
+                                    </button>
+                                </>
+                            ) : (
+                                <>
+                                    <button
+                                        onClick={() => navigate('/payments')}
+                                        className="w-full py-3 px-4 rounded-xl bg-white/10 hover:bg-white/20 transition-colors flex items-center justify-between group"
+                                    >
+                                        <span className="font-medium">Registrar Pago</span>
+                                        <ArrowUpRight size={18} className="text-primary-200 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
+                                    </button>
+                                    <button
+                                        onClick={() => navigate('/loans')}
+                                        className="w-full py-3 px-4 rounded-xl bg-white/10 hover:bg-white/20 transition-colors flex items-center justify-between group"
+                                    >
+                                        <span className="font-medium">Nuevo Préstamo</span>
+                                        <ArrowDownRight size={18} className="text-primary-200 group-hover:translate-x-1 group-hover:translate-y-1 transition-transform" />
+                                    </button>
+                                    <button
+                                        onClick={() => navigate('/members')}
+                                        className="w-full py-3 px-4 rounded-xl bg-white/10 hover:bg-white/20 transition-colors flex items-center justify-between group"
+                                    >
+                                        <span className="font-medium">Agregar Socio</span>
+                                        <Users size={18} className="text-primary-200 group-hover:scale-110 transition-transform" />
+                                    </button>
+                                </>
+                            )}
                         </div>
 
                         <div className="mt-8 p-4 rounded-xl bg-primary-950/50 backdrop-blur-sm">
