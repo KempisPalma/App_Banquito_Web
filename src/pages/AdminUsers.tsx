@@ -177,7 +177,7 @@ const AdminUsers: React.FC = () => {
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                                 {users.map(user => (
-                                    <tr key={user.id} className="hover:bg-slate-50/50">
+                                    <tr key={user.id} className="hover:bg-primary-50/50 transition-all duration-200 group relative border-l-2 border-l-transparent hover:border-l-primary-400">
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-3">
                                                 <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center text-primary-600 font-bold text-xs">

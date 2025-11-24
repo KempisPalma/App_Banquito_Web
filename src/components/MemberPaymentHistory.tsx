@@ -136,14 +136,28 @@ export const MemberPaymentHistory: React.FC<MemberPaymentHistoryProps> = ({
 
                                         {[1, 2, 3, 4, 5].map(week => {
                                             const status = getPaymentStatus(monthIndex, week);
+
+                                            // Determine color based on amount
+                                            let colorClasses = '';
+                                            if (!status.paid || status.amount === 0) {
+                                                // No payment - gray
+                                                colorClasses = 'bg-slate-100 text-slate-300';
+                                            } else if (status.amount >= 1 && status.amount < 7) {
+                                                // Incomplete payment - amber
+                                                colorClasses = 'bg-amber-100 text-amber-700 shadow-sm shadow-amber-200';
+                                            } else if (status.amount === 7) {
+                                                // Complete payment - green
+                                                colorClasses = 'bg-emerald-100 text-emerald-700 shadow-sm shadow-emerald-200';
+                                            } else {
+                                                // Overpayment - rose
+                                                colorClasses = 'bg-rose-100 text-rose-700 shadow-sm shadow-rose-200';
+                                            }
+
                                             return (
                                                 <td key={week} className="px-2 py-2 text-center">
                                                     <div className={`
                                                         mx-auto w-10 h-8 rounded-lg flex items-center justify-center text-xs font-bold transition-all duration-300
-                                                        ${status.paid
-                                                            ? 'bg-emerald-100 text-emerald-700 shadow-sm shadow-emerald-200'
-                                                            : 'bg-slate-100 text-slate-300'
-                                                        }
+                                                        ${colorClasses}
                                                     `}>
                                                         {status.paid ? (
                                                             <span>${status.amount}</span>

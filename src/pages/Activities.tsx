@@ -347,7 +347,7 @@ const Activities: React.FC = () => {
                                                         initial={{ opacity: 0 }}
                                                         animate={{ opacity: 1 }}
                                                         transition={{ delay: index * 0.03 }}
-                                                        className="hover:bg-slate-50/80 transition-colors"
+                                                        className="hover:bg-purple-50/50 transition-all duration-200 group relative border-l-2 border-l-transparent hover:border-l-purple-400"
                                                     >
                                                         <td className="px-8 py-5">
                                                             <div className="flex items-center space-x-3">

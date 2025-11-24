@@ -156,6 +156,9 @@ export const BanquitoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const user = users.find(u => u.username === username && u.password === password && u.active);
         if (user) {
             setCurrentUser(user);
+            // Clear saved payments date selection on login to start fresh
+            localStorage.removeItem('payments_selected_month');
+            localStorage.removeItem('payments_selected_year');
             return true;
         }
         return false;

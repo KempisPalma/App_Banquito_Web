@@ -225,21 +225,31 @@ const GeneralReport: React.FC = () => {
                     <p className="text-slate-500 mt-2 text-lg">Resumen financiero y distribución de ganancias {selectedYear}.</p>
                 </div>
 
-                <div className="flex gap-4 items-center bg-white/80 backdrop-blur-sm p-2 rounded-2xl shadow-sm border border-slate-200/60">
-                    <div className="relative group">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <Calendar className="h-4 w-4 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                <div className="flex gap-4 items-center">
+                    <div className="flex gap-4 items-center bg-white/80 backdrop-blur-sm p-2 rounded-2xl shadow-sm border border-slate-200/60">
+                        <div className="relative group">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <Calendar className="h-4 w-4 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                            </div>
+                            <select
+                                value={selectedYear}
+                                onChange={(e) => setSelectedYear(Number(e.target.value))}
+                                className="pl-10 pr-8 py-2.5 bg-transparent border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-slate-700 font-semibold cursor-pointer hover:bg-slate-50 transition-colors appearance-none"
+                            >
+                                {Array.from({ length: 7 }, (_, i) => new Date().getFullYear() - 2 + i).map(year => (
+                                    <option key={year} value={year}>{year}</option>
+                                ))}
+                            </select>
                         </div>
-                        <select
-                            value={selectedYear}
-                            onChange={(e) => setSelectedYear(Number(e.target.value))}
-                            className="pl-10 pr-8 py-2.5 bg-transparent border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-slate-700 font-semibold cursor-pointer hover:bg-slate-50 transition-colors appearance-none"
-                        >
-                            {Array.from({ length: 7 }, (_, i) => new Date().getFullYear() - 2 + i).map(year => (
-                                <option key={year} value={year}>{year}</option>
-                            ))}
-                        </select>
                     </div>
+
+                    <button
+                        onClick={() => window.print()}
+                        className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-slate-800 to-slate-900 text-white rounded-xl hover:from-slate-700 hover:to-slate-800 transition-all shadow-md hover:shadow-lg font-medium"
+                    >
+                        <Download size={18} />
+                        Imprimir Reporte
+                    </button>
                 </div>
             </div>
 
@@ -396,7 +406,7 @@ const GeneralReport: React.FC = () => {
                             exit={{ opacity: 0, scale: 0.95, y: 20 }}
                             className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
                         >
-                            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden pointer-events-auto flex flex-col max-h-[90vh]">
+                            <div className="print-report bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden pointer-events-auto flex flex-col max-h-[90vh]">
                                 <div className="p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
                                     <div className="flex items-center gap-4">
                                         <div className="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-indigo-500/30">

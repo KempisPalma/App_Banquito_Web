@@ -58,3 +58,83 @@
     @apply bg-clip-text text-transparent bg-gradient-to-r from-primary-600 to-secondary-600;
   }
 }
+
+/* Print Styles - Only print member detail modal */
+@media print {
+
+  /* Hide everything by default */
+  * {
+    visibility: hidden !important;
+  }
+
+  /* Show only the print-report modal and its children */
+  .print-report,
+  .print-report * {
+    visibility: visible !important;
+  }
+
+  /* Position the modal to fill the page */
+  .print-report {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    max-width: 100% !important;
+    max-height: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    transform: scale(0.7) !important;
+    transform-origin: top left !important;
+    width: 142.857% !important;
+    /* 1/0.7 */
+  }
+
+  /* Reduce padding */
+  .print-report .p-6 {
+    padding: 0.5rem !important;
+  }
+
+  .print-report .p-8 {
+    padding: 0.75rem !important;
+  }
+
+  .print-report .p-4 {
+    padding: 0.35rem !important;
+  }
+
+  /* Reduce font sizes */
+  .print-report .text-5xl {
+    font-size: 1.75rem !important;
+  }
+
+  .print-report .text-2xl {
+    font-size: 1.1rem !important;
+  }
+
+  /* Reduce table text */
+  .print-report table {
+    font-size: 0.7rem !important;
+  }
+
+  .print-report th,
+  .print-report td {
+    padding: 0.25rem 0.5rem !important;
+  }
+
+  /* Hide buttons */
+  .print-report button {
+    display: none !important;
+  }
+
+  /* Remove shadows */
+  .print-report .shadow-lg,
+  .print-report .shadow-xl,
+  .print-report .shadow-2xl {
+    box-shadow: none !important;
+  }
+
+  /* Page settings */
+  @page {
+    size: letter;
+    margin: 0.5cm;
+  }
+}

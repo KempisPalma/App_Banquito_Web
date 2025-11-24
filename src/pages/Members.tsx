@@ -192,7 +192,7 @@ const Members: React.FC = () => {
                                         initial={{ opacity: 0 }}
                                         animate={{ opacity: 1 }}
                                         transition={{ delay: index * 0.03 }}
-                                        className="hover:bg-primary-50/30 transition-all duration-200 group relative"
+                                        className="hover:bg-primary-50/50 transition-all duration-200 group relative border-l-2 border-l-transparent hover:border-l-primary-400"
                                     >
                                         <td className="px-8 py-5">
                                             <div className="flex items-center space-x-4">

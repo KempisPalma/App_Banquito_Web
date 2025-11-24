@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useBanquito } from '../context/BanquitoContext';
 import { Card } from '../components/ui/Card';
 import { motion } from 'framer-motion';
@@ -15,8 +15,26 @@ type PaymentRow = {
 
 const Payments: React.FC = () => {
     const { members, weeklyPayments, monthlyFees, recordWeeklyPayment, recordMonthlyFee, currentUser } = useBanquito();
-    const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
-    const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+
+    // Initialize from localStorage or default to current date
+    const getInitialMonth = () => {
+        const saved = localStorage.getItem('payments_selected_month');
+        return saved !== null ? parseInt(saved) : new Date().getMonth();
+    };
+
+    const getInitialYear = () => {
+        const saved = localStorage.getItem('payments_selected_year');
+        return saved !== null ? parseInt(saved) : new Date().getFullYear();
+    };
+
+    const [selectedMonth, setSelectedMonth] = useState(getInitialMonth);
+    const [selectedYear, setSelectedYear] = useState(getInitialYear);
+
+    // Save to localStorage whenever month or year changes
+    useEffect(() => {
+        localStorage.setItem('payments_selected_month', selectedMonth.toString());
+        localStorage.setItem('payments_selected_year', selectedYear.toString());
+    }, [selectedMonth, selectedYear]);
 
     const months = [
         'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -192,6 +210,58 @@ const Payments: React.FC = () => {
                 </div>
             </div>
 
+            {/* Statistics Panel - Totals */}
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+                {/* Weekly Totals */}
+                {[1, 2, 3, 4, 5].map(week => (
+                    <motion.div
+                        key={week}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: week * 0.05 }}
+                        className="bg-gradient-to-br from-indigo-50 to-indigo-100/50 rounded-2xl p-4 border border-indigo-200/50 shadow-sm hover:shadow-md transition-all"
+                    >
+                        <div className="text-xs font-semibold text-indigo-600 uppercase tracking-wider mb-1">
+                            Sem {week}
+                        </div>
+                        <div className="text-2xl font-black text-indigo-900">
+                            ${getWeekTotal(week).toFixed(2)}
+                        </div>
+                    </motion.div>
+                ))}
+
+                {/* Monthly Fee Total */}
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.3 }}
+                    className="bg-gradient-to-br from-purple-50 to-fuchsia-100/50 rounded-2xl p-4 border border-purple-200/50 shadow-sm hover:shadow-md transition-all"
+                >
+                    <div className="text-xs font-semibold text-purple-600 uppercase tracking-wider mb-1">
+                        Rifa Mensual
+                    </div>
+                    <div className="text-2xl font-black text-purple-900">
+                        ${getMonthlyFeeTotal().toFixed(2)}
+                    </div>
+                </motion.div>
+
+                {/* Grand Total */}
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.35 }}
+                    className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 rounded-2xl p-4 border border-emerald-200/50 shadow-md hover:shadow-lg transition-all col-span-2 md:col-span-1"
+                >
+                    <div className="text-xs font-semibold text-emerald-600 uppercase tracking-wider mb-1 flex items-center gap-1">
+                        <TrendingUp size={12} />
+                        Total General
+                    </div>
+                    <div className="text-2xl font-black text-emerald-900">
+                        ${getGrandTotal().toFixed(2)}
+                    </div>
+                </motion.div>
+            </div>
+
             <Card className="overflow-hidden border-none shadow-xl shadow-slate-200/40 bg-white/50 backdrop-blur-xl rounded-3xl" padding="none">
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
@@ -245,6 +315,24 @@ const Payments: React.FC = () => {
 
                                         {[1, 2, 3, 4, 5].map((week, colIndex) => {
                                             const amount = getWeeklyAmount(row.memberId, week, row.actionAlias);
+
+                                            // Determine input style based on amount
+                                            let inputClasses = "w-20 pl-5 pr-2 py-2 text-center border rounded-lg focus:ring-2 transition-all font-medium ";
+
+                                            if (amount === 0 || !amount) {
+                                                // No payment - default style
+                                                inputClasses += "border-slate-200 bg-white hover:bg-slate-50 text-slate-700 focus:ring-indigo-500/30 focus:border-indigo-500";
+                                            } else if (amount >= 1 && amount < 7) {
+                                                // Incomplete payment - amber/yellow warning
+                                                inputClasses += "border-amber-300 bg-amber-50/50 hover:bg-amber-50 text-amber-900 focus:ring-amber-500/30 focus:border-amber-500";
+                                            } else if (amount === 7) {
+                                                // Complete payment - green success
+                                                inputClasses += "border-emerald-300 bg-emerald-50/50 hover:bg-emerald-50 text-emerald-900 focus:ring-emerald-500/30 focus:border-emerald-500";
+                                            } else {
+                                                // Overpayment - soft red
+                                                inputClasses += "border-rose-300 bg-rose-50/50 hover:bg-rose-50 text-rose-900 focus:ring-rose-500/30 focus:border-rose-500";
+                                            }
+
                                             return (
                                                 <td key={week} className="px-2 py-3 text-center">
                                                     <div className="relative inline-block">
@@ -260,7 +348,7 @@ const Payments: React.FC = () => {
                                                                 const input = e.target as HTMLInputElement;
                                                                 input.value = input.value.replace(/[^0-9.]/g, '');
                                                             }}
-                                                            className="w-20 pl-5 pr-2 py-2 text-center border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all bg-white hover:bg-slate-50 text-slate-700 font-medium"
+                                                            className={inputClasses}
                                                             placeholder="0"
                                                             disabled={currentUser?.role === 'socio'}
                                                         />
@@ -302,27 +390,6 @@ const Payments: React.FC = () => {
                                 );
                             })}
                         </tbody>
-                        <tfoot className="bg-gradient-to-r from-slate-100 to-slate-50 border-t-2 border-slate-300 font-bold text-slate-800">
-                            <tr>
-                                <td className="px-6 py-4 sticky left-0 bg-gradient-to-r from-slate-100 to-slate-50 z-10">
-                                    <div className="flex items-center gap-2">
-                                        <TrendingUp className="text-indigo-600" size={20} />
-                                        <span>TOTALES</span>
-                                    </div>
-                                </td>
-                                {[1, 2, 3, 4, 5].map(week => (
-                                    <td key={week} className="px-4 py-4 text-center text-lg">
-                                        ${getWeekTotal(week).toFixed(2)}
-                                    </td>
-                                ))}
-                                <td className="px-4 py-4 text-center text-lg text-purple-700 bg-purple-50/30">
-                                    ${getMonthlyFeeTotal().toFixed(2)}
-                                </td>
-                                <td className="px-4 py-4 text-right text-xl bg-slate-100/70">
-                                    ${getGrandTotal().toFixed(2)}
-                                </td>
-                            </tr>
-                        </tfoot>
                     </table>
                 </div>
             </Card>
