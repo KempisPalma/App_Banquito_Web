@@ -16,16 +16,13 @@ const Activities: React.FC = () => {
         name: '',
         date: '',
         ticketPrice: 0,
-        totalTicketsPerMember: 10
+        totalTicketsPerMember: 10,
+        investment: 0
     });
 
-    // Filter states
-    const currentDate = new Date();
-    const [selectedYear, setSelectedYear] = useState<number>(currentDate.getFullYear());
-    const [selectedMonth, setSelectedMonth] = useState<number>(currentDate.getMonth());
+    const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+    const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
     const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
-    const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-    const [activityToDelete, setActivityToDelete] = useState<{ id: string; name: string; date: string } | null>(null);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -38,9 +35,9 @@ const Activities: React.FC = () => {
                     name: formData.name,
                     date: formData.date,
                     ticketPrice: Number(formData.ticketPrice),
-                    totalTicketsPerMember: Number(formData.totalTicketsPerMember)
+                    totalTicketsPerMember: Number(formData.totalTicketsPerMember),
+                    investment: Number(formData.investment)
                 };
-                // Since there's no updateActivity in context, we need to delete and re-add
                 deleteActivity(editingActivityId);
                 addActivity(updatedActivity);
             }
@@ -50,7 +47,8 @@ const Activities: React.FC = () => {
                 name: formData.name,
                 date: formData.date,
                 ticketPrice: Number(formData.ticketPrice),
-                totalTicketsPerMember: Number(formData.totalTicketsPerMember)
+                totalTicketsPerMember: Number(formData.totalTicketsPerMember),
+                investment: Number(formData.investment)
             });
         }
         handleCloseModal();
@@ -60,7 +58,7 @@ const Activities: React.FC = () => {
         setIsModalOpen(false);
         setIsEditMode(false);
         setEditingActivityId(null);
-        setFormData({ name: '', date: '', ticketPrice: 0, totalTicketsPerMember: 10 });
+        setFormData({ name: '', date: '', ticketPrice: 0, totalTicketsPerMember: 10, investment: 0 });
     };
 
     const handleEditActivity = (activity: typeof activities[0]) => {
@@ -68,113 +66,121 @@ const Activities: React.FC = () => {
             name: activity.name,
             date: activity.date,
             ticketPrice: activity.ticketPrice,
-            totalTicketsPerMember: activity.totalTicketsPerMember
+            totalTicketsPerMember: activity.totalTicketsPerMember,
+            investment: activity.investment || 0
         });
         setEditingActivityId(activity.id);
         setIsEditMode(true);
         setIsModalOpen(true);
     };
 
-    const handleTicketUpdate = (memberActivityId: string, field: 'ticketsSold' | 'ticketsReturned', value: number) => {
-        const ma = memberActivities.find(m => m.id === memberActivityId);
-        if (!ma) return;
-
-        const activity = activities.find(a => a.id === ma.activityId);
-        if (!activity) return;
-
-        const newValue = Math.max(0, Math.min(value, activity.totalTicketsPerMember));
-
-        const updates: any = { [field]: newValue };
-
-        if (field === 'ticketsSold') {
-            updates.amountPaid = newValue * activity.ticketPrice;
-            updates.fullyPaid = newValue * activity.ticketPrice === updates.amountPaid;
+    const handleTicketUpdate = (id: string, field: string, value: number) => {
+        const activityToUpdate = memberActivities.find(ma => ma.id === id);
+        if (activityToUpdate) {
+            updateMemberActivity({
+                ...activityToUpdate,
+                [field]: value
+            });
         }
-
-        updateMemberActivity({ ...ma, ...updates });
     };
 
-    const handleDeleteActivity = (activity: typeof activities[0]) => {
-        setActivityToDelete({ id: activity.id, name: activity.name, date: activity.date });
+    const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+    const [activityToDelete, setActivityToDelete] = useState<string | null>(null);
+
+    const handleDeleteActivity = (activity: any) => {
+        setActivityToDelete(activity.id);
         setDeleteConfirmOpen(true);
     };
 
     const confirmDeleteActivity = () => {
         if (activityToDelete) {
-            deleteActivity(activityToDelete.id);
-            setSelectedActivityId(null);
+            deleteActivity(activityToDelete);
             setDeleteConfirmOpen(false);
             setActivityToDelete(null);
+            if (selectedActivityId === activityToDelete) {
+                setSelectedActivityId(null);
+            }
         }
     };
 
-    // Filter and sort activities
-    const filteredActivities = activities
-        .filter(activity => {
-            const activityDate = new Date(activity.date);
-            return activityDate.getFullYear() === selectedYear && activityDate.getMonth() === selectedMonth;
-        })
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Most recent first
+    const filteredActivities = activities.filter(a => {
+        const d = new Date(a.date);
+        return d.getFullYear() === selectedYear && (selectedMonth === -1 || d.getMonth() === selectedMonth);
+    }).sort((a, b) => {
+        const dateA = new Date(a.date).getTime();
+        const dateB = new Date(b.date).getTime();
+        return dateB - dateA; // Descending order: Newest first
+    });
 
     const selectedActivity = filteredActivities.find(a => a.id === selectedActivityId) || filteredActivities[0];
     const currentMemberActivities = memberActivities.filter(ma => ma.activityId === selectedActivity?.id);
 
-    // Generate year options (last 5 years + current + next year)
-    const yearOptions = Array.from({ length: 7 }, (_, i) => currentDate.getFullYear() - 2 + i);
+    // Calculate stats for selected activity
+    const totalRevenue = currentMemberActivities.reduce((acc, curr) => acc + (curr.ticketsSold * (selectedActivity?.ticketPrice || 0)), 0);
+    const totalInvestment = selectedActivity?.investment || 0;
+    const netProfit = totalRevenue - totalInvestment;
 
-    // Month names in Spanish
+    const allTicketsPaid = currentMemberActivities.every(ma =>
+        (ma.ticketsSold * (selectedActivity?.ticketPrice || 0)) === ma.amountPaid &&
+        (ma.ticketsSold + ma.ticketsReturned) === (selectedActivity?.totalTicketsPerMember || 0)
+    );
+
+    const yearOptions = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
     const monthNames = [
-        'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-        'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+        "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+        "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
     ];
 
     return (
         <div className="space-y-8">
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                     <h1 className="text-3xl font-bold text-slate-900">Actividades y Rifas</h1>
-                    <p className="text-slate-500 mt-1">Gestiona la venta de tickets y actividades especiales.</p>
+                    <p className="text-slate-500 mt-1">Gestiona rifas, bingos y otras actividades de recaudación.</p>
                 </div>
-                <Button onClick={() => setIsModalOpen(true)} className="shadow-lg shadow-purple-500/20 bg-purple-600 hover:bg-purple-700 focus:ring-purple-500">
-                    <Plus size={20} className="mr-2" />
-                    Nueva Actividad
-                </Button>
-            </div>
-
-            {/* Year and Month Filters */}
-            <div className="flex gap-4 items-center mb-4">
-                <div className="flex items-center gap-2">
-                    <label className="text-sm font-medium text-slate-700">Año:</label>
+                <div className="flex flex-wrap items-center gap-3">
                     <select
                         value={selectedYear}
                         onChange={(e) => setSelectedYear(Number(e.target.value))}
-                        className="px-4 py-2 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all font-medium text-slate-700"
+                        className="px-4 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 text-slate-700 font-medium"
                     >
                         {yearOptions.map(year => (
                             <option key={year} value={year}>{year}</option>
                         ))}
                     </select>
-                </div>
-                <div className="flex items-center gap-2">
-                    <label className="text-sm font-medium text-slate-700">Mes:</label>
                     <select
                         value={selectedMonth}
                         onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                        className="px-4 py-2 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all font-medium text-slate-700"
+                        className="px-4 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 text-slate-700 font-medium"
                     >
+                        <option value={-1}>Todo el año</option>
                         {monthNames.map((month, index) => (
                             <option key={index} value={index}>{month}</option>
                         ))}
                     </select>
+                    <Button
+                        onClick={() => {
+                            setIsEditMode(false);
+                            setFormData({ name: '', date: '', ticketPrice: 0, totalTicketsPerMember: 10, investment: 0 });
+                            setIsModalOpen(true);
+                        }}
+                        className="bg-purple-600 hover:bg-purple-700 shadow-lg shadow-purple-500/20"
+                    >
+                        <Plus size={20} className="mr-2" />
+                        Nueva Actividad
+                    </Button>
                 </div>
             </div>
 
             {filteredActivities.length === 0 ? (
+                // ... (Empty state remains same)
                 <Card className="p-12 text-center text-slate-500 flex flex-col items-center justify-center border-dashed border-2 border-slate-200 bg-slate-50/50">
                     <div className="w-20 h-20 bg-purple-100 text-purple-500 rounded-full flex items-center justify-center mb-6">
                         <Gift size={40} />
                     </div>
-                    <h3 className="text-xl font-bold text-slate-800 mb-2">No hay actividades en {monthNames[selectedMonth]} {selectedYear}</h3>
+                    <h3 className="text-xl font-bold text-slate-800 mb-2">
+                        No hay actividades en {selectedMonth === -1 ? `el año ${selectedYear}` : `${monthNames[selectedMonth]} ${selectedYear}`}
+                    </h3>
                     <p className="max-w-md mx-auto mb-8">Crea una nueva actividad o rifa, o selecciona otro período.</p>
                     <Button onClick={() => setIsModalOpen(true)} variant="outline" className="border-purple-200 text-purple-600 hover:bg-purple-50">
                         Crear actividad
@@ -183,62 +189,53 @@ const Activities: React.FC = () => {
             ) : (
                 <>
                     <div className="flex space-x-4 overflow-x-auto pb-4 scrollbar-hide">
-                        {filteredActivities.map(activity => (
-                            <motion.button
-                                key={activity.id}
-                                onClick={() => setSelectedActivityId(activity.id)}
-                                whileHover={{ scale: 1.02 }}
-                                whileTap={{ scale: 0.98 }}
-                                className={clsx(
-                                    "flex-shrink-0 px-6 py-4 rounded-2xl border transition-all duration-300 text-left min-w-[200px]",
-                                    selectedActivity?.id === activity.id
-                                        ? "border-purple-500 bg-purple-600 text-white shadow-lg shadow-purple-500/30"
-                                        : "border-slate-200 bg-white text-slate-600 hover:border-purple-300 hover:shadow-md"
-                                )}
-                            >
-                                <div className="flex justify-between items-start">
-                                    <div>
-                                        <div className="font-bold text-lg mb-1">{activity.name}</div>
-                                        <div className={clsx("text-xs flex items-center", selectedActivity?.id === activity.id ? "text-purple-100" : "text-slate-400")}>
-                                            <Calendar size={12} className="mr-1.5" />
-                                            {new Date(activity.date).toLocaleDateString()}
+                        {filteredActivities.map(activity => {
+                            const actRevenue = memberActivities
+                                .filter(ma => ma.activityId === activity.id)
+                                .reduce((acc, curr) => acc + (curr.ticketsSold * activity.ticketPrice), 0);
+                            const isCompleted = memberActivities
+                                .filter(ma => ma.activityId === activity.id)
+                                .every(ma => (ma.ticketsSold * activity.ticketPrice) === ma.amountPaid && (ma.ticketsSold + ma.ticketsReturned) === activity.totalTicketsPerMember);
+
+                            return (
+                                <motion.button
+                                    key={activity.id}
+                                    onClick={() => setSelectedActivityId(activity.id)}
+                                    whileHover={{ scale: 1.02 }}
+                                    whileTap={{ scale: 0.98 }}
+                                    className={clsx(
+                                        "flex-shrink-0 px-6 py-4 rounded-2xl border transition-all duration-300 text-left min-w-[240px]",
+                                        selectedActivity?.id === activity.id
+                                            ? "border-purple-500 bg-purple-600 text-white shadow-lg shadow-purple-500/30"
+                                            : "border-slate-200 bg-white text-slate-600 hover:border-purple-300 hover:shadow-md"
+                                    )}
+                                >
+                                    <div className="flex justify-between items-start">
+                                        <div className="w-full">
+                                            <div className="flex justify-between items-start w-full">
+                                                <div className="font-bold text-lg mb-1 truncate pr-2">{activity.name}</div>
+                                                {isCompleted ? (
+                                                    <span className={clsx("text-[10px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider", selectedActivity?.id === activity.id ? "bg-emerald-400/20 text-emerald-100" : "bg-emerald-100 text-emerald-700")}>
+                                                        Finalizada
+                                                    </span>
+                                                ) : (
+                                                    <span className={clsx("text-[10px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider", selectedActivity?.id === activity.id ? "bg-amber-400/20 text-amber-100" : "bg-amber-100 text-amber-700")}>
+                                                        Pendiente
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className={clsx("text-xs flex items-center mb-2", selectedActivity?.id === activity.id ? "text-purple-100" : "text-slate-400")}>
+                                                <Calendar size={12} className="mr-1.5" />
+                                                {new Date(activity.date).toLocaleDateString()}
+                                            </div>
+                                            <div className={clsx("text-xs font-medium", selectedActivity?.id === activity.id ? "text-purple-200" : "text-slate-500")}>
+                                                Recaudado: ${actRevenue.toFixed(2)}
+                                            </div>
                                         </div>
                                     </div>
-                                    <div className="flex flex-col gap-1">
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleDeleteActivity(activity);
-                                            }}
-                                            className={clsx(
-                                                "p-1.5 rounded-lg transition-colors",
-                                                selectedActivity?.id === activity.id
-                                                    ? "hover:bg-purple-700 text-purple-100"
-                                                    : "hover:bg-red-50 text-slate-400 hover:text-red-600"
-                                            )}
-                                            title="Eliminar actividad"
-                                        >
-                                            <Trash2 size={16} />
-                                        </button>
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleEditActivity(activity);
-                                            }}
-                                            className={clsx(
-                                                "p-1.5 rounded-lg transition-colors",
-                                                selectedActivity?.id === activity.id
-                                                    ? "hover:bg-purple-700 text-purple-100"
-                                                    : "hover:bg-blue-50 text-slate-400 hover:text-blue-600"
-                                            )}
-                                            title="Editar actividad"
-                                        >
-                                            <Edit2 size={16} />
-                                        </button>
-                                    </div>
-                                </div>
-                            </motion.button>
-                        ))}
+                                </motion.button>
+                            )
+                        })}
                     </div>
 
                     <AnimatePresence mode="wait">
@@ -250,27 +247,77 @@ const Activities: React.FC = () => {
                             transition={{ duration: 0.2 }}
                         >
                             <Card className="overflow-hidden border-none shadow-xl shadow-slate-200/50" padding="none">
-                                <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                                    <div>
-                                        <h3 className="font-bold text-xl text-slate-800 flex items-center">
-                                            <Gift size={20} className="mr-2 text-purple-500" />
-                                            {selectedActivity.name}
-                                        </h3>
-                                        <div className="flex items-center mt-2 space-x-4 text-sm text-slate-500">
-                                            <span className="flex items-center bg-white px-3 py-1 rounded-full border border-slate-200 shadow-sm">
-                                                <DollarSign size={14} className="mr-1 text-emerald-500" />
-                                                Precio: <span className="font-bold text-slate-700 ml-1">${selectedActivity.ticketPrice}</span>
-                                            </span>
-                                            <span className="flex items-center bg-white px-3 py-1 rounded-full border border-slate-200 shadow-sm">
-                                                <Ticket size={14} className="mr-1 text-purple-500" />
-                                                Tickets/Socio: <span className="font-bold text-slate-700 ml-1">{selectedActivity.totalTicketsPerMember}</span>
-                                            </span>
+                                <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex flex-col gap-6">
+                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                                        <div>
+                                            <h3 className="font-bold text-2xl text-slate-800 flex items-center">
+                                                <Gift size={24} className="mr-3 text-purple-500" />
+                                                {selectedActivity.name}
+                                                {allTicketsPaid ? (
+                                                    <span className="ml-3 px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold uppercase tracking-wide">
+                                                        Finalizada
+                                                    </span>
+                                                ) : (
+                                                    <span className="ml-3 px-3 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-bold uppercase tracking-wide">
+                                                        En Curso
+                                                    </span>
+                                                )}
+                                            </h3>
+                                            <div className="flex items-center mt-3 space-x-4 text-sm text-slate-500">
+                                                <span className="flex items-center bg-white px-3 py-1 rounded-full border border-slate-200 shadow-sm">
+                                                    <DollarSign size={14} className="mr-1 text-emerald-500" />
+                                                    Precio: <span className="font-bold text-slate-700 ml-1">${selectedActivity.ticketPrice}</span>
+                                                </span>
+                                                <span className="flex items-center bg-white px-3 py-1 rounded-full border border-slate-200 shadow-sm">
+                                                    <Ticket size={14} className="mr-1 text-purple-500" />
+                                                    Tickets/Socio: <span className="font-bold text-slate-700 ml-1">{selectedActivity.totalTicketsPerMember}</span>
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleEditActivity(selectedActivity);
+                                                }}
+                                                className="p-2 rounded-xl hover:bg-white hover:shadow-md text-slate-400 hover:text-blue-600 transition-all border border-transparent hover:border-slate-100"
+                                                title="Editar actividad"
+                                            >
+                                                <Edit2 size={20} />
+                                            </button>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleDeleteActivity(selectedActivity);
+                                                }}
+                                                className="p-2 rounded-xl hover:bg-white hover:shadow-md text-slate-400 hover:text-red-600 transition-all border border-transparent hover:border-slate-100"
+                                                title="Eliminar actividad"
+                                            >
+                                                <Trash2 size={20} />
+                                            </button>
                                         </div>
                                     </div>
-                                    <div className="text-right">
-                                        <div className="text-sm text-slate-500">Total Recaudado</div>
-                                        <div className="text-2xl font-bold text-emerald-600">
-                                            ${currentMemberActivities.reduce((acc, curr) => acc + (curr.ticketsSold * selectedActivity.ticketPrice), 0).toFixed(2)}
+
+                                    {/* Financial Stats Grid */}
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
+                                            <div className="text-sm text-slate-500 mb-1">Recaudación Total</div>
+                                            <div className="text-2xl font-black text-slate-800">${totalRevenue.toFixed(2)}</div>
+                                            <div className="text-xs text-emerald-600 font-medium mt-1">Ingresos brutos</div>
+                                        </div>
+                                        <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
+                                            <div className="text-sm text-slate-500 mb-1">Inversión (Costo)</div>
+                                            <div className="text-2xl font-black text-slate-800">${totalInvestment.toFixed(2)}</div>
+                                            <div className="text-xs text-amber-600 font-medium mt-1">Gastos operativos</div>
+                                        </div>
+                                        <div className={clsx("p-4 rounded-2xl border shadow-sm", netProfit >= 0 ? "bg-emerald-50 border-emerald-100" : "bg-red-50 border-red-100")}>
+                                            <div className={clsx("text-sm mb-1", netProfit >= 0 ? "text-emerald-700" : "text-red-700")}>Ganancia Neta</div>
+                                            <div className={clsx("text-2xl font-black", netProfit >= 0 ? "text-emerald-700" : "text-red-700")}>
+                                                ${netProfit.toFixed(2)}
+                                            </div>
+                                            <div className={clsx("text-xs font-medium mt-1", netProfit >= 0 ? "text-emerald-600" : "text-red-600")}>
+                                                {netProfit >= 0 ? "Beneficio real" : "Pérdida"}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -309,13 +356,9 @@ const Activities: React.FC = () => {
                                                                 </div>
                                                                 <div>
                                                                     <div className="font-medium text-slate-900">{member.name}</div>
-                                                                    {member.aliases && member.aliases.length > 0 && (
-                                                                        <div className="flex flex-wrap gap-1 mt-1">
-                                                                            {member.aliases.map((alias, idx) => (
-                                                                                <span key={idx} className="text-xs text-purple-600 font-medium bg-purple-50 px-2 py-0.5 rounded-full">
-                                                                                    {alias}
-                                                                                </span>
-                                                                            ))}
+                                                                    {ma.actionAlias && (
+                                                                        <div className="text-xs text-purple-600 font-medium bg-purple-50 px-2 py-0.5 rounded-full inline-block mt-1">
+                                                                            {ma.actionAlias}
                                                                         </div>
                                                                     )}
                                                                 </div>
@@ -375,9 +418,26 @@ const Activities: React.FC = () => {
                 onClose={handleCloseModal}
                 title={isEditMode ? "Editar Actividad" : "Nueva Actividad"}
             >
-                <form onSubmit={handleSubmit} className="space-y-5">
+                <form onSubmit={(e) => {
+                    e.preventDefault();
+                    // Validation
+                    const newErrors = {
+                        name: !formData.name.trim(),
+                        date: !formData.date,
+                        ticketPrice: formData.ticketPrice <= 0,
+                        totalTicketsPerMember: formData.totalTicketsPerMember <= 0
+                    };
+
+                    if (Object.values(newErrors).some(Boolean)) {
+                        // Show errors (you might want to add state for this to show UI feedback)
+                        alert("Por favor complete todos los campos obligatorios correctamente.");
+                        return;
+                    }
+
+                    handleSubmit(e);
+                }} className="space-y-5">
                     <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1.5">Nombre de la Actividad</label>
+                        <label className="block text-sm font-medium text-slate-700 mb-1.5">Nombre de la Actividad *</label>
                         <input
                             type="text"
                             required
@@ -388,7 +448,7 @@ const Activities: React.FC = () => {
                         />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1.5">Fecha</label>
+                        <label className="block text-sm font-medium text-slate-700 mb-1.5">Fecha *</label>
                         <input
                             type="date"
                             required
@@ -399,13 +459,13 @@ const Activities: React.FC = () => {
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1.5">Precio Ticket</label>
+                            <label className="block text-sm font-medium text-slate-700 mb-1.5">Precio Ticket *</label>
                             <div className="relative">
                                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
                                 <input
                                     type="number"
                                     required
-                                    min="0"
+                                    min="0.01"
                                     step="0.01"
                                     value={formData.ticketPrice}
                                     onChange={(e) => setFormData({ ...formData, ticketPrice: e.target.valueAsNumber })}
@@ -414,7 +474,7 @@ const Activities: React.FC = () => {
                             </div>
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1.5">Tickets por Socio</label>
+                            <label className="block text-sm font-medium text-slate-700 mb-1.5">Tickets por Socio *</label>
                             <input
                                 type="number"
                                 required
@@ -424,6 +484,22 @@ const Activities: React.FC = () => {
                                 className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all"
                             />
                         </div>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1.5">Inversión Inicial (Opcional)</label>
+                        <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
+                            <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={formData.investment || ''}
+                                onChange={(e) => setFormData({ ...formData, investment: e.target.value ? parseFloat(e.target.value) : 0 })}
+                                className="w-full pl-8 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all"
+                                placeholder="0.00"
+                            />
+                        </div>
+                        <p className="text-xs text-slate-500 mt-1">Dinero tomado del banquito para premios u organización. (Por defecto: $0.00)</p>
                     </div>
                     <div className="flex justify-end space-x-3 pt-4">
                         <Button

@@ -14,7 +14,8 @@ const Members: React.FC = () => {
         name: '',
         cedula: '',
         aliases: [''] as string[],
-        phone: ''
+        phone: '',
+        active: true
     });
     const [searchTerm, setSearchTerm] = useState('');
     const [cedulaError, setCedulaError] = useState('');
@@ -65,14 +66,16 @@ const Members: React.FC = () => {
                 name: formData.name.trim(),
                 cedula: formData.cedula.trim(),
                 aliases: processedAliases,
-                phone: formData.phone.trim() || undefined
+                phone: formData.phone.trim() || undefined,
+                active: formData.active
             });
         } else {
             addMember(
                 formData.name.trim(),
                 formData.cedula.trim(),
                 processedAliases,
-                formData.phone.trim() || undefined
+                formData.phone.trim() || undefined,
+                formData.active
             );
         }
         handleClose();
@@ -84,7 +87,8 @@ const Members: React.FC = () => {
             name: member.name,
             cedula: member.cedula || '',
             aliases: member.aliases && member.aliases.length > 0 ? member.aliases : [''],
-            phone: member.phone || ''
+            phone: member.phone || '',
+            active: member.active
         });
         setIsModalOpen(true);
     };
@@ -105,7 +109,7 @@ const Members: React.FC = () => {
     const handleClose = () => {
         setIsModalOpen(false);
         setEditingId(null);
-        setFormData({ name: '', cedula: '', aliases: [''], phone: '' });
+        setFormData({ name: '', cedula: '', aliases: [''], phone: '', active: true });
         setCedulaError('');
     };
 
@@ -277,7 +281,27 @@ const Members: React.FC = () => {
             >
                 <form onSubmit={handleSubmit} className="space-y-5">
                     <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1.5">Nombre Completo *</label>
+                        <div className="flex justify-between items-center mb-2">
+                            <label className="block text-sm font-medium text-slate-700">Nombre Completo *</label>
+                            <div className="flex items-center gap-2 bg-slate-50 pl-3 pr-1 py-1 rounded-full border border-slate-200/60">
+                                <span className={`text-xs font-semibold transition-colors ${formData.active ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                    {formData.active ? 'Activo' : 'Inactivo'}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => setFormData({ ...formData, active: !formData.active })}
+                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 ${formData.active
+                                        ? 'bg-emerald-500 shadow-md shadow-emerald-500/30'
+                                        : 'bg-slate-300 shadow-inner'
+                                        }`}
+                                >
+                                    <span
+                                        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform duration-300 ${formData.active ? 'translate-x-5' : 'translate-x-0.5'
+                                            }`}
+                                    />
+                                </button>
+                            </div>
+                        </div>
                         <input
                             type="text"
                             required

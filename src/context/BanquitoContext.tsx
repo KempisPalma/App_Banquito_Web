@@ -21,12 +21,12 @@ interface BanquitoContextType {
     updateUser: (id: string, data: Partial<User>) => void;
     deleteUser: (id: string) => void;
 
-    addMember: (name: string, cedula?: string, aliases?: string[], phone?: string) => void;
+    addMember: (name: string, cedula?: string, aliases?: string[], phone?: string, active?: boolean) => void;
     updateMember: (id: string, data: Partial<Member>) => void;
     deleteMember: (id: string) => void;
 
-    recordWeeklyPayment: (memberId: string, year: number, month: number, week: number, amount: number) => void;
-    recordMonthlyFee: (memberId: string, year: number, month: number, amount: number) => void;
+    recordWeeklyPayment: (memberId: string, year: number, month: number, week: number, amount: number, actionAlias?: string) => void;
+    recordMonthlyFee: (memberId: string, year: number, month: number, amount: number, actionAlias?: string) => void;
 
     addActivity: (activity: Omit<Activity, 'id'>) => void;
     updateActivity: (id: string, data: Partial<Activity>) => void;
@@ -219,17 +219,114 @@ export const BanquitoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return { success: true };
     };
 
-    const addMember = (name: string, cedula?: string, aliases?: string[], phone?: string) => {
+    // Self-healing: Ensure all members have records for all activities (per action/alias)
+    useEffect(() => {
+        if (members.length === 0 || activities.length === 0) return;
+
+        const missingActivities: MemberActivity[] = [];
+        const updatedActivities: MemberActivity[] = [];
+        let hasUpdates = false;
+
+        // Helper to get all expected "identities" for a member (base + aliases)
+        const getMemberIdentities = (member: Member) => {
+            if (member.aliases && member.aliases.length > 0) {
+                return member.aliases.map(alias => ({ memberId: member.id, actionAlias: alias }));
+            }
+            return [{ memberId: member.id, actionAlias: undefined }];
+        };
+
+        activities.forEach(activity => {
+            members.forEach(member => {
+                const identities = getMemberIdentities(member);
+
+                identities.forEach(identity => {
+                    // Find existing record for this specific identity
+                    const existingRecord = memberActivities.find(ma =>
+                        ma.activityId === activity.id &&
+                        ma.memberId === member.id &&
+                        ma.actionAlias === identity.actionAlias
+                    );
+
+                    if (!existingRecord) {
+                        // Check if there's a "legacy" record (no alias) that should belong to the first alias
+                        const legacyRecord = memberActivities.find(ma =>
+                            ma.activityId === activity.id &&
+                            ma.memberId === member.id &&
+                            !ma.actionAlias
+                        );
+
+                        if (legacyRecord && identity.actionAlias && member.aliases && member.aliases[0] === identity.actionAlias) {
+                            // Migrate legacy record to first alias
+                            updatedActivities.push({ ...legacyRecord, actionAlias: identity.actionAlias });
+                            hasUpdates = true;
+                        } else {
+                            // Create new record
+                            missingActivities.push({
+                                id: crypto.randomUUID(),
+                                activityId: activity.id,
+                                memberId: member.id,
+                                actionAlias: identity.actionAlias,
+                                ticketsSold: 0,
+                                ticketsReturned: 0,
+                                amountPaid: 0,
+                                fullyPaid: false,
+                            });
+                        }
+                    }
+                });
+            });
+        });
+
+        if (missingActivities.length > 0 || hasUpdates) {
+            console.log(`Fixing/Migrating member-activity records. New: ${missingActivities.length}, Updates: ${updatedActivities.length}`);
+
+            setMemberActivities(prev => {
+                let next = [...prev];
+
+                // Apply updates (migration)
+                updatedActivities.forEach(update => {
+                    next = next.map(ma => ma.id === update.id ? update : ma);
+                });
+
+                // Add missing
+                return [...next, ...missingActivities];
+            });
+        }
+    }, [members.length, activities.length, memberActivities.length]);
+
+    const addMember = (name: string, cedula?: string, aliases?: string[], phone?: string, active: boolean = true) => {
         const newMember: Member = {
             id: crypto.randomUUID(),
             name,
             cedula,
             aliases,
             phone,
-            active: true,
+            active,
             joinedDate: new Date().toISOString(),
         };
+
+        // Create activity records for the new member (per alias)
+        const identities = (aliases && aliases.length > 0)
+            ? aliases.map(alias => ({ memberId: newMember.id, actionAlias: alias }))
+            : [{ memberId: newMember.id, actionAlias: undefined }];
+
+        const newMemberActivities = activities.flatMap(activity =>
+            identities.map(identity => ({
+                id: crypto.randomUUID(),
+                activityId: activity.id,
+                memberId: newMember.id,
+                actionAlias: identity.actionAlias,
+                ticketsSold: 0,
+                ticketsReturned: 0,
+                amountPaid: 0,
+                fullyPaid: false,
+            }))
+        );
+
         setMembers([...members, newMember]);
+        if (newMemberActivities.length > 0) {
+            setMemberActivities(prev => [...prev, ...newMemberActivities]);
+        }
     };
 
     const updateMember = (id: string, data: Partial<Member>) => {
@@ -285,16 +382,23 @@ export const BanquitoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         };
         setActivities([...activities, newActivity]);
 
-        // Initialize member participation
-        const newMemberActivities = members.map(m => ({
-            id: crypto.randomUUID(),
-            activityId: newActivity.id,
-            memberId: m.id,
-            ticketsSold: 0,
-            ticketsReturned: 0,
-            amountPaid: 0,
-            fullyPaid: false,
-        }));
+        // Initialize member participation (per alias)
+        const newMemberActivities = members.flatMap(m => {
+            const identities = (m.aliases && m.aliases.length > 0)
+                ? m.aliases.map(alias => ({ memberId: m.id, actionAlias: alias }))
+                : [{ memberId: m.id, actionAlias: undefined }];
+
+            return identities.map(identity => ({
+                id: crypto.randomUUID(),
+                activityId: newActivity.id,
+                memberId: m.id,
+                actionAlias: identity.actionAlias,
+                ticketsSold: 0,
+                ticketsReturned: 0,
+                amountPaid: 0,
+                fullyPaid: false,
+            }));
+        });
         setMemberActivities([...memberActivities, ...newMemberActivities]);
     };
 
@@ -342,8 +446,6 @@ export const BanquitoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 const totalPaid = updatedPayments.reduce((acc, curr) => acc + curr.amount, 0);
 
                 // Calculate total due (Principal + Interest)
-                // Note: This is a simplified view. Real logic might need to track "current principal" vs "interest" separately.
-                // For now, we assume interest is calculated on the ORIGINAL amount unless recalculated.
                 let currentInterestAmount = (l.amount * l.interestRate) / 100;
                 let totalDue = l.amount + currentInterestAmount;
 

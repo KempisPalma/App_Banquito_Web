@@ -36,12 +36,14 @@ export interface Activity {
     description?: string;
     ticketPrice: number; // Price per ticket
     totalTicketsPerMember: number; // Usually 10
+    investment?: number; // Cost to organize the activity
 }
 
 export interface MemberActivity {
     id: string;
     activityId: string;
     memberId: string;
+    actionAlias?: string; // Specific action/alias for this activity record
     ticketsSold: number;
     ticketsReturned: number;
     amountPaid: number;

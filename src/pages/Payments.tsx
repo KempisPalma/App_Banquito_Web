@@ -206,7 +206,7 @@ const Payments: React.FC = () => {
                                     </th>
                                 ))}
                                 <th className="px-4 py-5 text-center text-purple-600 font-semibold text-sm uppercase tracking-wider bg-purple-50/30">
-                                    Cuota Mensual
+                                    Rifa Mensual
                                 </th>
                                 <th className="px-4 py-5 text-right text-slate-800 font-bold text-sm uppercase tracking-wider bg-slate-100/50">
                                     Total
@@ -256,6 +256,10 @@ const Payments: React.FC = () => {
                                                             value={amount || ''}
                                                             onChange={(e) => handleWeeklyChange(row.memberId, week, e.target.value, row.actionAlias)}
                                                             onKeyDown={(e) => handleKeyDown(e, rowIndex, colIndex)}
+                                                            onInput={(e) => {
+                                                                const input = e.target as HTMLInputElement;
+                                                                input.value = input.value.replace(/[^0-9.]/g, '');
+                                                            }}
                                                             className="w-20 pl-5 pr-2 py-2 text-center border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all bg-white hover:bg-slate-50 text-slate-700 font-medium"
                                                             placeholder="0"
                                                             disabled={currentUser?.role === 'socio'}
@@ -275,6 +279,10 @@ const Payments: React.FC = () => {
                                                     value={monthlyFee || ''}
                                                     onChange={(e) => handleMonthlyFeeChange(row.memberId, e.target.value, row.actionAlias)}
                                                     onKeyDown={(e) => handleKeyDown(e, rowIndex, 5)}
+                                                    onInput={(e) => {
+                                                        const input = e.target as HTMLInputElement;
+                                                        input.value = input.value.replace(/[^0-9.]/g, '');
+                                                    }}
                                                     className="w-20 pl-5 pr-2 py-2 text-center border border-purple-200 rounded-lg focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500 transition-all bg-white hover:bg-purple-50 text-purple-700 font-medium"
                                                     placeholder="0"
                                                     disabled={currentUser?.role === 'socio'}

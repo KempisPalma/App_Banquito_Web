@@ -89,6 +89,14 @@ const Dashboard: React.FC = () => {
         return loans.reduce((acc, curr) => acc + curr.amount, 0);
     }, [loans]);
 
+    const totalActions = React.useMemo(() => {
+        return members.reduce((acc, m) => {
+            // If member has aliases, count them. Otherwise count as 1.
+            const actionCount = (m.aliases && m.aliases.length > 0) ? m.aliases.length : 1;
+            return acc + actionCount;
+        }, 0);
+    }, [members]);
+
     const container = {
         hidden: { opacity: 0 },
         show: {
@@ -127,8 +135,8 @@ const Dashboard: React.FC = () => {
             <motion.div variants={container} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <motion.div variants={item}>
                     <StatCard
-                        title="Total Socios"
-                        value={members.length.toString()}
+                        title="Total Socios / Acciones"
+                        value={`${members.length} / ${totalActions}`}
                         icon={Users}
                         color="bg-blue-500"
                         trend="+2 este mes"

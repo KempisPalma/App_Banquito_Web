@@ -3,25 +3,34 @@ import { useBanquito } from '../context/BanquitoContext';
 import { Card } from '../components/ui/Card';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Wallet, TrendingUp, Gift, Calendar, ChevronRight, X, Download } from 'lucide-react';
+import { MemberPaymentHistory } from '../components/MemberPaymentHistory';
 
-const StatCard: React.FC<{ title: string; value: string; icon: any; color: string; subtitle?: string }> = ({ title, value, icon: Icon, color, subtitle }) => {
+const StatCard: React.FC<{ title: string; value: string; icon: any; color: string; subtitle?: string; children?: React.ReactNode }> = ({ title, value, icon: Icon, color, subtitle, children }) => {
     const getStyle = (colorClass: string) => {
         switch (colorClass) {
             case 'bg-blue-500': return {
                 gradient: 'from-blue-500 to-blue-600',
                 shadow: 'shadow-blue-500/30',
+                text: 'text-blue-600',
+                bg: 'bg-blue-50'
             };
             case 'bg-emerald-500': return {
                 gradient: 'from-emerald-500 to-emerald-600',
                 shadow: 'shadow-emerald-500/30',
+                text: 'text-emerald-600',
+                bg: 'bg-emerald-50'
             };
             case 'bg-purple-500': return {
                 gradient: 'from-purple-500 to-purple-600',
                 shadow: 'shadow-purple-500/30',
+                text: 'text-purple-600',
+                bg: 'bg-purple-50'
             };
             default: return {
                 gradient: 'from-slate-500 to-slate-600',
                 shadow: 'shadow-slate-500/30',
+                text: 'text-slate-600',
+                bg: 'bg-slate-50'
             };
         }
     };
@@ -29,23 +38,29 @@ const StatCard: React.FC<{ title: string; value: string; icon: any; color: strin
     const style = getStyle(color);
 
     return (
-        <Card className="relative overflow-hidden group hover:-translate-y-2 transition-all duration-300 hover:shadow-xl border border-slate-100">
-            <div className={`absolute -right-6 -top-6 w-32 h-32 rounded-full opacity-0 group-hover:opacity-10 transition-opacity duration-500 bg-gradient-to-br ${style.gradient}`} />
+        <Card className="relative overflow-hidden group hover:-translate-y-1 transition-all duration-300 hover:shadow-xl border border-slate-100 h-full flex flex-col">
+            <div className={`absolute -right-6 -top-6 w-32 h-32 rounded-full opacity-0 group-hover:opacity-5 transition-opacity duration-500 bg-gradient-to-br ${style.gradient}`} />
 
-            <div className="relative z-10">
+            <div className="relative z-10 flex-1 p-1">
                 <div className="flex justify-between items-start mb-4">
-                    <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${style.gradient} flex items-center justify-center shadow-lg ${style.shadow} group-hover:scale-110 transition-transform duration-300`}>
-                        <Icon size={28} className="text-white" />
+                    <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${style.gradient} flex items-center justify-center shadow-lg ${style.shadow} group-hover:scale-110 transition-transform duration-300`}>
+                        <Icon size={24} className="text-white" />
                     </div>
                 </div>
 
-                <div className="space-y-1">
+                <div className="space-y-1 mb-4">
                     <p className="text-sm text-slate-500 font-medium">{title}</p>
                     <h3 className="text-3xl font-black text-slate-800 tracking-tight">{value}</h3>
                     {subtitle && (
-                        <p className="text-xs text-slate-400 font-medium mt-1">{subtitle}</p>
+                        <p className="text-xs text-slate-400 font-medium">{subtitle}</p>
                     )}
                 </div>
+
+                {children && (
+                    <div className={`mt-auto pt-4 border-t border-slate-100 ${style.bg} -mx-6 -mb-6 px-6 py-4`}>
+                        {children}
+                    </div>
+                )}
             </div>
         </Card>
     );
@@ -58,87 +73,149 @@ const GeneralReport: React.FC = () => {
 
     // --- CALCULATIONS ---
 
-    // 1. Total Savings per Member (Weekly + Monthly Fees)
-    const getMemberSavings = (memberId: string) => {
+    // Helper: Get all "identities" (member + action)
+    const allIdentities = useMemo(() => {
+        return members.flatMap(m => {
+            if (m.aliases && m.aliases.length > 0) {
+                return m.aliases.map(alias => ({ member: m, actionAlias: alias }));
+            }
+            return [{ member: m, actionAlias: undefined }];
+        });
+    }, [members]);
+
+    // 1. Savings per Identity (Weekly + Monthly Fees)
+    const getIdentitySavings = (memberId: string, actionAlias?: string) => {
         const weekly = weeklyPayments
-            .filter(p => p.memberId === memberId && p.year === selectedYear)
+            .filter(p => p.memberId === memberId && p.year === selectedYear && p.actionAlias === actionAlias)
             .reduce((acc, curr) => acc + curr.amount, 0);
 
         const monthly = monthlyFees
-            .filter(f => f.memberId === memberId && f.year === selectedYear)
+            .filter(f => f.memberId === memberId && f.year === selectedYear && f.actionAlias === actionAlias)
             .reduce((acc, curr) => acc + curr.amount, 0);
 
         return { weekly, monthly, total: weekly + monthly };
     };
 
-    // 2. Loan Profits (Interest Collected)
-    const loanProfits = useMemo(() => {
-        return loans.reduce((total, loan) => {
-            // Only count interest payments made in the selected year
+    // 2. Loan Calculations
+    const loanStats = useMemo(() => {
+        const yearLoans = loans; // Consider all loans for principal outstanding, or filter by year if needed. Usually outstanding is global.
+
+        // Principal currently lent out (Active loans)
+        const principalOutstanding = yearLoans
+            .filter(l => l.status === 'active')
+            .reduce((total, loan) => {
+                const principalPaid = loan.payments
+                    .filter(p => p.paymentType === 'principal')
+                    .reduce((acc, curr) => acc + curr.amount, 0);
+                return total + (loan.amount - principalPaid);
+            }, 0);
+
+        // Interest collected this year (Profit)
+        const interestCollected = yearLoans.reduce((total, loan) => {
             const interestPayments = loan.payments
                 .filter(p => new Date(p.date).getFullYear() === selectedYear && p.paymentType === 'interest')
                 .reduce((acc, curr) => acc + curr.amount, 0);
             return total + interestPayments;
         }, 0);
+
+        // Total amount ever lent (Volume)
+        const totalLentVolume = yearLoans
+            .filter(l => new Date(l.startDate).getFullYear() === selectedYear)
+            .reduce((acc, curr) => acc + curr.amount, 0);
+
+        return { principalOutstanding, interestCollected, totalLentVolume };
     }, [loans, selectedYear]);
 
-    // 3. Activity Profits (Total Revenue)
-    const activityProfits = useMemo(() => {
-        // Filter activities by year
+    // 3. Activity Calculations
+    const activityStats = useMemo(() => {
         const yearActivities = activities.filter(a => new Date(a.date).getFullYear() === selectedYear);
 
-        return yearActivities.reduce((total, activity) => {
-            // Find all sales for this activity
+        const totalRevenue = yearActivities.reduce((total, activity) => {
             const sales = memberActivities
                 .filter(ma => ma.activityId === activity.id)
                 .reduce((acc, curr) => acc + (curr.ticketsSold * activity.ticketPrice), 0);
             return total + sales;
         }, 0);
+
+        const totalInvestment = yearActivities.reduce((acc, curr) => acc + (curr.investment || 0), 0);
+        const netProfit = totalRevenue - totalInvestment;
+
+        return { totalRevenue, totalInvestment, netProfit, count: yearActivities.length };
     }, [activities, memberActivities, selectedYear]);
 
-    // 4. Eligibility for Loan Profit Share
-    // Rule: Has a loan OR paid >= $10 in interest
-    const getMemberLoanEligibility = (memberId: string) => {
-        const memberLoans = loans.filter(l => l.memberId === memberId && l.borrowerType === 'member');
-        const hasLoan = memberLoans.length > 0;
+    // 4. Eligibility for Loan Profit Share (Per Action)
+    const getIdentityLoanEligibility = (memberId: string, actionAlias?: string) => {
+        // Loans taken by this specific action
+        const identityLoans = loans.filter(l =>
+            l.memberId === memberId &&
+            l.borrowerType === 'member' &&
+            l.actionAlias === actionAlias
+        );
+        const hasLoan = identityLoans.length > 0;
 
-        const totalInterestPaid = memberLoans.reduce((total, loan) => {
+        const totalInterestPaid = identityLoans.reduce((total, loan) => {
             return total + loan.payments
                 .filter(p => p.paymentType === 'interest')
                 .reduce((acc, curr) => acc + curr.amount, 0);
         }, 0);
 
-        // Threshold: Interest of $100 loan at 10% = $10
         return hasLoan || totalInterestPaid >= 10;
     };
 
     // Calculate Shares
-    const eligibleForLoansCount = members.filter(m => getMemberLoanEligibility(m.id)).length;
-    const loanSharePerMember = eligibleForLoansCount > 0 ? loanProfits / eligibleForLoansCount : 0;
+    const eligibleIdentitiesCount = allIdentities.filter(id => getIdentityLoanEligibility(id.member.id, id.actionAlias)).length;
+    const loanSharePerIdentity = eligibleIdentitiesCount > 0 ? loanStats.interestCollected / eligibleIdentitiesCount : 0;
 
-    const activitySharePerMember = members.length > 0 ? activityProfits / members.length : 0;
+    const activitySharePerIdentity = allIdentities.length > 0 ? activityStats.netProfit / allIdentities.length : 0;
 
     // Compile Report Data
-    const reportData = members.map(member => {
-        const savings = getMemberSavings(member.id);
-        const isEligibleForLoans = getMemberLoanEligibility(member.id);
-        const loanShare = isEligibleForLoans ? loanSharePerMember : 0;
-        const totalReceive = savings.total + loanShare + activitySharePerMember;
+    const reportData = allIdentities.map(({ member, actionAlias }) => {
+        const savings = getIdentitySavings(member.id, actionAlias);
+        const isEligibleForLoans = getIdentityLoanEligibility(member.id, actionAlias);
+        const loanShare = isEligibleForLoans ? loanSharePerIdentity : 0;
+
+        // Activity share can be negative if there's a loss, but usually we distribute profits. 
+        // If netProfit is negative, share is negative (loss sharing) or zero depending on rules. 
+        // Assuming simple division of net result.
+        const activityShare = activitySharePerIdentity;
+
+        const totalReceive = savings.total + loanShare + activityShare;
 
         return {
-            ...member,
+            id: member.id, // Keep member ID for reference
+            uniqueId: `${member.id}-${actionAlias || 'default'}`, // Unique ID for list
+            name: member.name,
+            actionAlias,
             savings,
             isEligibleForLoans,
             loanShare,
-            activityShare: activitySharePerMember,
-            totalReceive
+            activityShare,
+            totalReceive,
+            memberObj: member // Pass full member object for modal
         };
     });
 
     const grandTotalSavings = reportData.reduce((acc, curr) => acc + curr.savings.total, 0);
     const grandTotalDistributed = reportData.reduce((acc, curr) => acc + curr.totalReceive, 0);
 
-    const selectedMemberData = selectedMemberId ? reportData.find(m => m.id === selectedMemberId) : null;
+    // Cash on Hand: Total Savings - Money Lent Out - Money Spent on Activities + Activity Revenue (Revenue is already in Banquito? No, revenue comes in. Investment goes out.)
+    // Actually simpler: Cash = (Savings + Loan Interest + Activity Revenue) - (Loan Principal Outstanding + Activity Investment)
+    // Wait, "Savings" is money IN. "Loan Interest" is money IN. "Activity Revenue" is money IN.
+    // "Loan Principal" is money OUT (when lent) but comes back. "Principal Outstanding" is money currently OUT.
+    // "Activity Investment" is money OUT.
+    // So Cash Available = (Total Savings Collected) + (Total Interest Collected) + (Total Activity Revenue) - (Principal Currently Outstanding) - (Total Activity Investment)
+    // However, usually "Total Savings" displayed is just the sum of member contributions.
+
+    // Let's stick to the user request: "dinero que se tiene y el que se deberia tener".
+    // "Debería tener" (Total Assets) = Total Savings + Total Profits (Loan Interest + Activity Net Profit)
+    // "Se tiene" (Cash/Liquidity) = Total Assets - Principal Outstanding - Activity Investment (if not recovered yet? No, Net Profit accounts for investment).
+    // Actually: Cash = Total Assets - Principal Outstanding.
+
+    const totalAssets = grandTotalSavings + loanStats.interestCollected + activityStats.netProfit;
+    const cashOnHand = totalAssets - loanStats.principalOutstanding;
+
+
+    const selectedReportItem = selectedMemberId ? reportData.find(r => r.uniqueId === selectedMemberId) : null;
 
     return (
         <div className="space-y-8 max-w-[1600px] mx-auto">
@@ -169,25 +246,59 @@ const GeneralReport: React.FC = () => {
             {/* Summary Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <StatCard
-                    title="Ahorro Total Socios"
-                    value={`$${grandTotalSavings.toFixed(2)}`}
+                    title="Ahorro Total (Activos)"
+                    value={`$${totalAssets.toFixed(2)}`}
                     icon={Wallet}
                     color="bg-blue-500"
-                />
+                    subtitle="Total acumulado + Ganancias"
+                >
+                    <div className="flex justify-between items-center text-sm">
+                        <span className="text-slate-500">Dinero en Caja (Disponible)</span>
+                        <span className="font-bold text-slate-700">${cashOnHand.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm mt-1">
+                        <span className="text-slate-500">Dinero Prestado/Invertido</span>
+                        <span className="font-bold text-slate-700">${loanStats.principalOutstanding.toFixed(2)}</span>
+                    </div>
+                </StatCard>
+
                 <StatCard
                     title="Ganancias Préstamos"
-                    value={`$${loanProfits.toFixed(2)}`}
+                    value={`$${loanStats.interestCollected.toFixed(2)}`}
                     icon={TrendingUp}
                     color="bg-emerald-500"
-                    subtitle={`$${loanSharePerMember.toFixed(2)} por socio elegible (${eligibleForLoansCount})`}
-                />
+                    subtitle={`$${loanSharePerIdentity.toFixed(2)} por acción elegible (${eligibleIdentitiesCount})`}
+                >
+                    <div className="flex justify-between items-center text-sm">
+                        <span className="text-emerald-700/70">Capital Prestado (Activo)</span>
+                        <span className="font-bold text-emerald-700">${loanStats.principalOutstanding.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm mt-1">
+                        <span className="text-emerald-700/70">Volumen Prestado {selectedYear}</span>
+                        <span className="font-bold text-emerald-700">${loanStats.totalLentVolume.toFixed(2)}</span>
+                    </div>
+                </StatCard>
+
                 <StatCard
                     title="Ganancias Actividades"
-                    value={`$${activityProfits.toFixed(2)}`}
+                    value={`$${activityStats.netProfit.toFixed(2)}`}
                     icon={Gift}
                     color="bg-purple-500"
-                    subtitle={`$${activitySharePerMember.toFixed(2)} por socio (Todos)`}
-                />
+                    subtitle={`$${activitySharePerIdentity.toFixed(2)} por acción (Todas)`}
+                >
+                    <div className="flex justify-between items-center text-sm">
+                        <span className="text-purple-700/70">Ingresos Totales</span>
+                        <span className="font-bold text-purple-700">${activityStats.totalRevenue.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm mt-1">
+                        <span className="text-purple-700/70">Inversión Total</span>
+                        <span className="font-bold text-purple-700">${activityStats.totalInvestment.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm mt-1 pt-1 border-t border-purple-200/50">
+                        <span className="text-purple-700/70">Actividades Realizadas</span>
+                        <span className="font-bold text-purple-700">{activityStats.count}</span>
+                    </div>
+                </StatCard>
             </div>
 
             {/* Main Table */}
@@ -196,7 +307,7 @@ const GeneralReport: React.FC = () => {
                     <table className="w-full text-left border-collapse">
                         <thead>
                             <tr className="bg-slate-50/80 border-b border-slate-200/60">
-                                <th className="px-6 py-5 text-slate-500 font-medium text-xs uppercase tracking-wider">Socio</th>
+                                <th className="px-6 py-5 text-slate-500 font-medium text-xs uppercase tracking-wider">Socio / Acción</th>
                                 <th className="px-6 py-5 text-right text-slate-500 font-medium text-xs uppercase tracking-wider">Ahorro Total</th>
                                 <th className="px-6 py-5 text-right text-emerald-600 font-medium text-xs uppercase tracking-wider bg-emerald-50/30">Part. Préstamos</th>
                                 <th className="px-6 py-5 text-right text-purple-600 font-medium text-xs uppercase tracking-wider bg-purple-50/30">Part. Actividades</th>
@@ -207,12 +318,12 @@ const GeneralReport: React.FC = () => {
                         <tbody className="divide-y divide-slate-100">
                             {reportData.map((data, index) => (
                                 <motion.tr
-                                    key={data.id}
+                                    key={data.uniqueId}
                                     initial={{ opacity: 0, y: 10 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     transition={{ delay: index * 0.05 }}
                                     className="group hover:bg-slate-50/80 transition-colors cursor-pointer"
-                                    onClick={() => setSelectedMemberId(data.id)}
+                                    onClick={() => setSelectedMemberId(data.uniqueId)}
                                 >
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-3">
@@ -221,13 +332,9 @@ const GeneralReport: React.FC = () => {
                                             </div>
                                             <div>
                                                 <div className="font-semibold text-slate-700">{data.name}</div>
-                                                {data.aliases && data.aliases.length > 0 && (
-                                                    <div className="flex flex-wrap gap-1 mt-0.5">
-                                                        {data.aliases.map((alias: string, idx: number) => (
-                                                            <span key={idx} className="text-xs text-slate-400">
-                                                                {alias}{idx < data.aliases!.length - 1 ? ', ' : ''}
-                                                            </span>
-                                                        ))}
+                                                {data.actionAlias && (
+                                                    <div className="text-xs text-purple-600 font-medium bg-purple-50 px-2 py-0.5 rounded-full inline-block mt-0.5">
+                                                        {data.actionAlias}
                                                     </div>
                                                 )}
                                             </div>
@@ -258,8 +365,12 @@ const GeneralReport: React.FC = () => {
                             <tr>
                                 <td className="px-6 py-4">TOTALES</td>
                                 <td className="px-6 py-4 text-right">${grandTotalSavings.toFixed(2)}</td>
-                                <td className="px-6 py-4 text-right text-emerald-700">${loanProfits.toFixed(2)}</td>
-                                <td className="px-6 py-4 text-right text-purple-700">${activityProfits.toFixed(2)}</td>
+                                <td className="px-6 py-4 text-right text-emerald-700">
+                                    ${reportData.reduce((acc, curr) => acc + curr.loanShare, 0).toFixed(2)}
+                                </td>
+                                <td className="px-6 py-4 text-right text-purple-700">
+                                    ${reportData.reduce((acc, curr) => acc + curr.activityShare, 0).toFixed(2)}
+                                </td>
                                 <td className="px-6 py-4 text-right text-xl">${grandTotalDistributed.toFixed(2)}</td>
                                 <td></td>
                             </tr>
@@ -270,7 +381,7 @@ const GeneralReport: React.FC = () => {
 
             {/* Member Detail Modal */}
             <AnimatePresence>
-                {selectedMemberId && selectedMemberData && (
+                {selectedMemberId && selectedReportItem && (
                     <>
                         <motion.div
                             initial={{ opacity: 0 }}
@@ -289,10 +400,10 @@ const GeneralReport: React.FC = () => {
                                 <div className="p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
                                     <div className="flex items-center gap-4">
                                         <div className="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-indigo-500/30">
-                                            {selectedMemberData.name.charAt(0)}
+                                            {selectedReportItem.name.charAt(0)}
                                         </div>
                                         <div>
-                                            <h2 className="text-2xl font-bold text-slate-900">{selectedMemberData.name}</h2>
+                                            <h2 className="text-2xl font-bold text-slate-900">{selectedReportItem.name}</h2>
                                             <p className="text-slate-500">Detalle de Fin de Año {selectedYear}</p>
                                         </div>
                                     </div>
@@ -309,67 +420,18 @@ const GeneralReport: React.FC = () => {
                                     <div className="text-center">
                                         <p className="text-slate-500 font-medium mb-1">Total a Recibir</p>
                                         <h3 className="text-5xl font-black text-slate-900 tracking-tight">
-                                            ${selectedMemberData.totalReceive.toFixed(2)}
+                                            ${selectedReportItem.totalReceive.toFixed(2)}
                                         </h3>
                                     </div>
 
-                                    {/* Breakdown */}
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                        <div className="p-4 rounded-2xl bg-blue-50 border border-blue-100">
-                                            <div className="flex items-center gap-2 mb-2 text-blue-700 font-bold">
-                                                <Wallet size={18} />
-                                                Ahorros
-                                            </div>
-                                            <div className="text-2xl font-bold text-slate-800">${selectedMemberData.savings.total.toFixed(2)}</div>
-                                            <div className="text-xs text-slate-500 mt-1">
-                                                Semanal: ${selectedMemberData.savings.weekly.toFixed(2)}<br />
-                                                Mensual: ${selectedMemberData.savings.monthly.toFixed(2)}
-                                            </div>
-                                        </div>
-
-                                        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100">
-                                            <div className="flex items-center gap-2 mb-2 text-emerald-700 font-bold">
-                                                <TrendingUp size={18} />
-                                                Préstamos
-                                            </div>
-                                            <div className="text-2xl font-bold text-slate-800">${selectedMemberData.loanShare.toFixed(2)}</div>
-                                            <div className="text-xs text-slate-500 mt-1">
-                                                {selectedMemberData.isEligibleForLoans
-                                                    ? "Socio Elegible"
-                                                    : "No cumple requisitos (Min $10 interés o 1 préstamo)"}
-                                            </div>
-                                        </div>
-
-                                        <div className="p-4 rounded-2xl bg-purple-50 border border-purple-100">
-                                            <div className="flex items-center gap-2 mb-2 text-purple-700 font-bold">
-                                                <Gift size={18} />
-                                                Actividades
-                                            </div>
-                                            <div className="text-2xl font-bold text-slate-800">${selectedMemberData.activityShare.toFixed(2)}</div>
-                                            <div className="text-xs text-slate-500 mt-1">
-                                                Distribución igualitaria
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Detailed Stats */}
-                                    <div className="space-y-3">
-                                        <h4 className="font-bold text-slate-900">Resumen de Actividad</h4>
-                                        <div className="bg-slate-50 rounded-xl p-4 space-y-2 text-sm">
-                                            <div className="flex justify-between">
-                                                <span className="text-slate-500">Pagos Semanales Realizados</span>
-                                                <span className="font-medium text-slate-900">${selectedMemberData.savings.weekly.toFixed(2)}</span>
-                                            </div>
-                                            <div className="flex justify-between">
-                                                <span className="text-slate-500">Cuotas Mensuales (Rifas)</span>
-                                                <span className="font-medium text-slate-900">${selectedMemberData.savings.monthly.toFixed(2)}</span>
-                                            </div>
-                                            <div className="border-t border-slate-200 my-2 pt-2 flex justify-between font-bold">
-                                                <span className="text-slate-700">Subtotal Ahorrado</span>
-                                                <span className="text-slate-900">${selectedMemberData.savings.total.toFixed(2)}</span>
-                                            </div>
-                                        </div>
-                                    </div>
+                                    {/* Detailed Payment History Table */}
+                                    <MemberPaymentHistory
+                                        member={selectedReportItem.memberObj}
+                                        year={selectedYear}
+                                        weeklyPayments={weeklyPayments}
+                                        monthlyFees={monthlyFees}
+                                        initialAction={selectedReportItem.actionAlias}
+                                    />
                                 </div>
 
                                 <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-end">
