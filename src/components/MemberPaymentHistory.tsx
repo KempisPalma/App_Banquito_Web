@@ -9,6 +9,7 @@ interface MemberPaymentHistoryProps {
     weeklyPayments: WeeklyPayment[];
     monthlyFees: MonthlyFee[];
     initialAction?: string;
+    reportData?: any[]; // We'll type this properly or use any for now to avoid circular deps if types aren't exported
 }
 
 const MONTHS = [
@@ -21,7 +22,8 @@ export const MemberPaymentHistory: React.FC<MemberPaymentHistoryProps> = ({
     year,
     weeklyPayments,
     monthlyFees,
-    initialAction
+    initialAction,
+    reportData
 }) => {
     const [selectedAction, setSelectedAction] = useState<string>(
         initialAction || (member.aliases && member.aliases.length > 0 ? member.aliases[0] : 'default')
@@ -47,7 +49,15 @@ export const MemberPaymentHistory: React.FC<MemberPaymentHistoryProps> = ({
     // Calculate totals
     const totalWeeklyPaid = filteredPayments.reduce((acc, curr) => acc + curr.amount, 0);
     const totalFeesPaid = filteredFees.reduce((acc, curr) => acc + curr.amount, 0);
-    const totalPaid = totalWeeklyPaid + totalFeesPaid;
+
+    // Find the calculated totals from the report data for the selected action
+    const currentReportItem = reportData?.find(r =>
+        r.id === member.id &&
+        (r.actionAlias === selectedAction || (!r.actionAlias && selectedAction === 'default'))
+    );
+
+    // If we have the report item, use its totalReceive, otherwise fallback to simple sum
+    const totalToReceive = currentReportItem ? currentReportItem.totalReceive : (totalWeeklyPaid + totalFeesPaid);
 
     // Helper to check payment status
     const getPaymentStatus = (monthIndex: number, week: number) => {
@@ -88,16 +98,16 @@ export const MemberPaymentHistory: React.FC<MemberPaymentHistoryProps> = ({
             {/* Stats Summary */}
             <div className="grid grid-cols-3 gap-4">
                 <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-4 text-white shadow-lg shadow-blue-500/20">
-                    <p className="text-blue-100 text-xs font-medium mb-1">Total Aportaciones</p>
+                    <p className="text-blue-100 text-xs font-medium mb-1">Total de Pagos Mensuales</p>
                     <p className="text-2xl font-bold">${totalWeeklyPaid.toFixed(2)}</p>
                 </div>
                 <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl p-4 text-white shadow-lg shadow-purple-500/20">
-                    <p className="text-purple-100 text-xs font-medium mb-1">Total Rifas</p>
+                    <p className="text-purple-100 text-xs font-medium mb-1">Total de Rifas Mensuales</p>
                     <p className="text-2xl font-bold">${totalFeesPaid.toFixed(2)}</p>
                 </div>
                 <div className="bg-gradient-to-br from-slate-700 to-slate-800 rounded-2xl p-4 text-white shadow-lg shadow-slate-500/20">
-                    <p className="text-slate-300 text-xs font-medium mb-1">Gran Total</p>
-                    <p className="text-2xl font-bold">${totalPaid.toFixed(2)}</p>
+                    <p className="text-slate-300 text-xs font-medium mb-1">Total a Recibir</p>
+                    <p className="text-2xl font-bold">${totalToReceive.toFixed(2)}</p>
                 </div>
             </div>
 

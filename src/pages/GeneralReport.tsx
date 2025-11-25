@@ -441,6 +441,7 @@ const GeneralReport: React.FC = () => {
                                         weeklyPayments={weeklyPayments}
                                         monthlyFees={monthlyFees}
                                         initialAction={selectedReportItem.actionAlias}
+                                        reportData={reportData}
                                     />
                                 </div>
 
