@@ -115,7 +115,6 @@ const Activities: React.FC = () => {
     const netProfit = totalRevenue - totalInvestment;
 
     const allTicketsPaid = currentMemberActivities.every(ma =>
-        (ma.ticketsSold * (selectedActivity?.ticketPrice || 0)) === ma.amountPaid &&
         (ma.ticketsSold + ma.ticketsReturned) === (selectedActivity?.totalTicketsPerMember || 0)
     );
 
@@ -189,7 +188,7 @@ const Activities: React.FC = () => {
                                 .reduce((acc, curr) => acc + (curr.ticketsSold * activity.ticketPrice), 0);
                             const isCompleted = memberActivities
                                 .filter(ma => ma.activityId === activity.id)
-                                .every(ma => (ma.ticketsSold * activity.ticketPrice) === ma.amountPaid && (ma.ticketsSold + ma.ticketsReturned) === activity.totalTicketsPerMember);
+                                .every(ma => (ma.ticketsSold + ma.ticketsReturned) === activity.totalTicketsPerMember);
 
                             return (
                                 <motion.button
