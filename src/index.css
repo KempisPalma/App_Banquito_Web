@@ -108,7 +108,8 @@
   }
 
   /* Hide buttons explicitly */
-  .print-report button {
+  .print-report button,
+  .no-print {
     display: none !important;
   }
 
@@ -138,5 +139,12 @@
   .print-report td {
     padding: 8px 4px !important;
     border-bottom: 1px solid #ddd;
+  }
+
+  /* Force 4 columns for stats grid */
+  .print-report .report-stats-grid {
+    display: grid !important;
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 10px !important;
   }
 }

@@ -56,8 +56,8 @@ export const MemberPaymentHistory: React.FC<MemberPaymentHistoryProps> = ({
         (r.actionAlias === selectedAction || (!r.actionAlias && selectedAction === 'default'))
     );
 
-    // If we have the report item, use its totalReceive, otherwise fallback to simple sum
-    const totalToReceive = currentReportItem ? currentReportItem.totalReceive : (totalWeeklyPaid + totalFeesPaid);
+    const loanShare = currentReportItem?.loanShare || 0;
+    const activityShare = currentReportItem?.activityShare || 0;
 
     // Helper to check payment status
     const getPaymentStatus = (monthIndex: number, week: number) => {
@@ -96,7 +96,7 @@ export const MemberPaymentHistory: React.FC<MemberPaymentHistoryProps> = ({
             </div>
 
             {/* Stats Summary */}
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 report-stats-grid">
                 <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-4 text-white shadow-lg shadow-blue-500/20">
                     <p className="text-blue-100 text-xs font-medium mb-1">Total de Pagos Mensuales</p>
                     <p className="text-2xl font-bold">${totalWeeklyPaid.toFixed(2)}</p>
@@ -105,9 +105,13 @@ export const MemberPaymentHistory: React.FC<MemberPaymentHistoryProps> = ({
                     <p className="text-purple-100 text-xs font-medium mb-1">Total de Rifas Mensuales</p>
                     <p className="text-2xl font-bold">${totalFeesPaid.toFixed(2)}</p>
                 </div>
-                <div className="bg-gradient-to-br from-slate-700 to-slate-800 rounded-2xl p-4 text-white shadow-lg shadow-slate-500/20">
-                    <p className="text-slate-300 text-xs font-medium mb-1">Total a Recibir</p>
-                    <p className="text-2xl font-bold">${totalToReceive.toFixed(2)}</p>
+                <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-2xl p-4 text-white shadow-lg shadow-emerald-500/20">
+                    <p className="text-emerald-100 text-xs font-medium mb-1">Ganancia en Préstamos</p>
+                    <p className="text-2xl font-bold">${loanShare.toFixed(2)}</p>
+                </div>
+                <div className="bg-gradient-to-br from-amber-500 to-amber-600 rounded-2xl p-4 text-white shadow-lg shadow-amber-500/20">
+                    <p className="text-amber-100 text-xs font-medium mb-1">Ganancia en Actividades</p>
+                    <p className="text-2xl font-bold">${activityShare.toFixed(2)}</p>
                 </div>
             </div>
 

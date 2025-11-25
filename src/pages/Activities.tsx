@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { clsx } from 'clsx';
 
 const Activities: React.FC = () => {
-    const { activities, memberActivities, members, addActivity, deleteActivity, updateMemberActivity } = useBanquito();
+    const { activities, memberActivities, members, addActivity, deleteActivity, updateMemberActivity, updateActivity } = useBanquito();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false);
     const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
@@ -28,19 +28,13 @@ const Activities: React.FC = () => {
         e.preventDefault();
         if (isEditMode && editingActivityId) {
             // Update existing activity
-            const activity = activities.find(a => a.id === editingActivityId);
-            if (activity) {
-                const updatedActivity = {
-                    ...activity,
-                    name: formData.name,
-                    date: formData.date,
-                    ticketPrice: Number(formData.ticketPrice),
-                    totalTicketsPerMember: Number(formData.totalTicketsPerMember),
-                    investment: Number(formData.investment)
-                };
-                deleteActivity(editingActivityId);
-                addActivity(updatedActivity);
-            }
+            updateActivity(editingActivityId, {
+                name: formData.name,
+                date: formData.date,
+                ticketPrice: Number(formData.ticketPrice),
+                totalTicketsPerMember: Number(formData.totalTicketsPerMember),
+                investment: Number(formData.investment)
+            });
         } else {
             // Create new activity
             addActivity({
@@ -85,19 +79,19 @@ const Activities: React.FC = () => {
     };
 
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-    const [activityToDelete, setActivityToDelete] = useState<string | null>(null);
+    const [activityToDelete, setActivityToDelete] = useState<typeof activities[0] | null>(null);
 
-    const handleDeleteActivity = (activity: any) => {
-        setActivityToDelete(activity.id);
+    const handleDeleteActivity = (activity: typeof activities[0]) => {
+        setActivityToDelete(activity);
         setDeleteConfirmOpen(true);
     };
 
     const confirmDeleteActivity = () => {
         if (activityToDelete) {
-            deleteActivity(activityToDelete);
+            deleteActivity(activityToDelete.id);
             setDeleteConfirmOpen(false);
             setActivityToDelete(null);
-            if (selectedActivityId === activityToDelete) {
+            if (selectedActivityId === activityToDelete.id) {
                 setSelectedActivityId(null);
             }
         }

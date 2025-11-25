@@ -163,16 +163,17 @@ const GeneralReport: React.FC = () => {
     };
 
     // Calculate Shares
-    const eligibleIdentitiesCount = allIdentities.filter(id => getIdentityLoanEligibility(id.member.id, id.actionAlias)).length;
-    const loanSharePerIdentity = eligibleIdentitiesCount > 0 ? loanStats.interestCollected / eligibleIdentitiesCount : 0;
+    // Calculate Shares
+    // Distribute loan interest among all actions (identities)
+    const loanSharePerIdentity = allIdentities.length > 0 ? loanStats.interestCollected / allIdentities.length : 0;
 
     const activitySharePerIdentity = allIdentities.length > 0 ? activityStats.netProfit / allIdentities.length : 0;
 
     // Compile Report Data
     const reportData = allIdentities.map(({ member, actionAlias }) => {
         const savings = getIdentitySavings(member.id, actionAlias);
-        const isEligibleForLoans = getIdentityLoanEligibility(member.id, actionAlias);
-        const loanShare = isEligibleForLoans ? loanSharePerIdentity : 0;
+        // Everyone is eligible for loan shares now
+        const loanShare = loanSharePerIdentity;
 
         // Activity share can be negative if there's a loss, but usually we distribute profits. 
         // If netProfit is negative, share is negative (loss sharing) or zero depending on rules. 
@@ -187,7 +188,7 @@ const GeneralReport: React.FC = () => {
             name: member.name,
             actionAlias,
             savings,
-            isEligibleForLoans,
+            savings,
             loanShare,
             activityShare,
             totalReceive,
@@ -277,7 +278,7 @@ const GeneralReport: React.FC = () => {
                     value={`$${loanStats.interestCollected.toFixed(2)}`}
                     icon={TrendingUp}
                     color="bg-emerald-500"
-                    subtitle={`$${loanSharePerIdentity.toFixed(2)} por acción elegible (${eligibleIdentitiesCount})`}
+                    subtitle={`$${loanSharePerIdentity.toFixed(2)} por acción (Todas)`}
                 >
                     <div className="flex justify-between items-center text-sm">
                         <span className="text-emerald-700/70">Capital Prestado (Activo)</span>
@@ -355,7 +356,6 @@ const GeneralReport: React.FC = () => {
                                     </td>
                                     <td className="px-6 py-4 text-right font-medium text-emerald-600 bg-emerald-50/10 group-hover:bg-emerald-50/30 transition-colors">
                                         ${data.loanShare.toFixed(2)}
-                                        {!data.isEligibleForLoans && <span className="text-[10px] text-slate-400 block">No elegible</span>}
                                     </td>
                                     <td className="px-6 py-4 text-right font-medium text-purple-600 bg-purple-50/10 group-hover:bg-purple-50/30 transition-colors">
                                         ${data.activityShare.toFixed(2)}
