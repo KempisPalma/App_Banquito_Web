@@ -17,18 +17,25 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [isSearchOpen, setIsSearchOpen] = React.useState(false);
 
     const navItems = [
-        { path: '/', label: 'Dashboard', icon: LayoutDashboard, permission: null },
-        { path: '/members', label: 'Socios', icon: Users, permission: 'manage_members' },
-        { path: '/payments', label: 'Pagos', icon: DollarSign, permission: 'manage_payments' },
-        { path: '/activities', label: 'Actividades', icon: Gift, permission: 'manage_activities' },
-        { path: '/loans', label: 'Préstamos', icon: CreditCard, permission: 'manage_loans' },
-        { path: '/report', label: 'Reporte', icon: FileText, permission: 'view_reports' },
-        { path: '/admin/users', label: 'Usuarios', icon: Shield, permission: 'admin' },
+        { path: '/', label: 'Dashboard', icon: LayoutDashboard, permission: null, visibleForSocio: true },
+        { path: '/members', label: 'Socios', icon: Users, permission: 'manage_members', visibleForSocio: false },
+        { path: '/payments', label: 'Pagos', icon: DollarSign, permission: null, visibleForSocio: true },
+        { path: '/activities', label: 'Actividades', icon: Gift, permission: null, visibleForSocio: true },
+        { path: '/loans', label: 'Préstamos', icon: CreditCard, permission: null, visibleForSocio: true },
+        { path: '/report', label: 'Reporte', icon: FileText, permission: 'view_reports', visibleForSocio: false },
+        { path: '/admin/users', label: 'Usuarios', icon: Shield, permission: 'admin', visibleForSocio: false },
     ];
 
     const filteredNavItems = navItems.filter(item => {
         if (!currentUser) return false;
-        if (!item.permission) return true; // Dashboard and Report are for everyone
+
+        // If user is socio, only show items marked as visible for socio
+        if (currentUser.role === 'socio') {
+            return item.visibleForSocio;
+        }
+
+        // For other users, check permissions as before
+        if (!item.permission) return true; // Dashboard is for everyone
         return currentUser.role === 'admin' || currentUser.permissions.includes(item.permission as any);
     });
 
@@ -43,11 +50,12 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
         // Search members
         members.forEach(member => {
-            if (member.name.toLowerCase().includes(query) || member.alias?.toLowerCase().includes(query)) {
+            const firstAlias = member.aliases?.[0];
+            if (member.name.toLowerCase().includes(query) || firstAlias?.toLowerCase().includes(query)) {
                 results.push({
                     type: 'Socio',
                     title: member.name,
-                    subtitle: member.alias || member.phone || '',
+                    subtitle: firstAlias || member.phone || '',
                     path: '/members',
                     icon: Users
                 });
@@ -95,8 +103,16 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     // Calculate loan notifications
     const loanNotifications = React.useMemo(() => {
         const now = new Date();
-        return loans
-            .filter(loan => loan.status !== 'paid')
+        let relevantLoans = loans.filter(loan => loan.status !== 'paid');
+
+        // If user is socio, only show their own loans
+        if (currentUser?.role === 'socio' && currentUser.memberId) {
+            relevantLoans = relevantLoans.filter(loan =>
+                loan.borrowerType === 'member' && loan.memberId === currentUser.memberId
+            );
+        }
+
+        return relevantLoans
             .map(loan => {
                 const endDate = new Date(loan.endDate);
                 const daysUntilDue = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
@@ -117,7 +133,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 return null;
             })
             .filter(Boolean) as { loanId: string; message: string; type: 'error' | 'warning'; date: string }[];
-    }, [loans, members]);
+    }, [loans, members, currentUser]);
 
     const handleLogout = () => {
         logout();
@@ -241,6 +257,15 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 <nav className={clsx("flex-1 px-4 space-y-2 overflow-y-auto scrollbar-hide", isSidebarCollapsed ? "mt-4" : "mt-8")}>
                     {filteredNavItems.map((item, index) => {
                         const isActive = index === activeIndex;
+
+                        // Personalizar nombres para usuarios socio
+                        let displayLabel = item.label;
+                        if (currentUser?.role === 'socio') {
+                            if (item.path === '/payments') displayLabel = 'Mis Pagos';
+                            else if (item.path === '/loans') displayLabel = 'Mis Préstamos';
+                            else if (item.path === '/activities') displayLabel = 'Mis Actividades';
+                        }
+
                         return (
                             <Link
                                 key={item.path}
@@ -277,7 +302,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                                 )}>
                                     <item.icon size={22} className={clsx(isActive && "text-primary-600")} />
                                     {!isSidebarCollapsed && (
-                                        <span className="ml-3">{item.label}</span>
+                                        <span className="ml-3">{displayLabel}</span>
                                     )}
                                 </div>
                             </Link>

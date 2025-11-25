@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { clsx } from 'clsx';
 
 const Activities: React.FC = () => {
-    const { activities, memberActivities, members, addActivity, deleteActivity, updateMemberActivity, updateActivity } = useBanquito();
+    const { activities, memberActivities, members, addActivity, deleteActivity, updateMemberActivity, updateActivity, currentUser } = useBanquito();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false);
     const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
@@ -151,17 +151,19 @@ const Activities: React.FC = () => {
                             <option key={index} value={index}>{month}</option>
                         ))}
                     </select>
-                    <Button
-                        onClick={() => {
-                            setIsEditMode(false);
-                            setFormData({ name: '', date: '', ticketPrice: 0, totalTicketsPerMember: 10, investment: 0 });
-                            setIsModalOpen(true);
-                        }}
-                        className="bg-purple-600 hover:bg-purple-700 shadow-lg shadow-purple-500/20"
-                    >
-                        <Plus size={20} className="mr-2" />
-                        Nueva Actividad
-                    </Button>
+                    {currentUser?.role !== 'socio' && (
+                        <Button
+                            onClick={() => {
+                                setIsEditMode(false);
+                                setFormData({ name: '', date: '', ticketPrice: 0, totalTicketsPerMember: 10, investment: 0 });
+                                setIsModalOpen(true);
+                            }}
+                            className="bg-purple-600 hover:bg-purple-700 shadow-lg shadow-purple-500/20"
+                        >
+                            <Plus size={20} className="mr-2" />
+                            Nueva Actividad
+                        </Button>
+                    )}
                 </div>
             </div>
 
@@ -267,28 +269,30 @@ const Activities: React.FC = () => {
                                                 </span>
                                             </div>
                                         </div>
-                                        <div className="flex gap-2">
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleEditActivity(selectedActivity);
-                                                }}
-                                                className="p-2 rounded-xl hover:bg-white hover:shadow-md text-slate-400 hover:text-blue-600 transition-all border border-transparent hover:border-slate-100"
-                                                title="Editar actividad"
-                                            >
-                                                <Edit2 size={20} />
-                                            </button>
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleDeleteActivity(selectedActivity);
-                                                }}
-                                                className="p-2 rounded-xl hover:bg-white hover:shadow-md text-slate-400 hover:text-red-600 transition-all border border-transparent hover:border-slate-100"
-                                                title="Eliminar actividad"
-                                            >
-                                                <Trash2 size={20} />
-                                            </button>
-                                        </div>
+                                        {currentUser?.role !== 'socio' && (
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleEditActivity(selectedActivity);
+                                                    }}
+                                                    className="p-2 rounded-xl hover:bg-white hover:shadow-md text-slate-400 hover:text-blue-600 transition-all border border-transparent hover:border-slate-100"
+                                                    title="Editar actividad"
+                                                >
+                                                    <Edit2 size={20} />
+                                                </button>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleDeleteActivity(selectedActivity);
+                                                    }}
+                                                    className="p-2 rounded-xl hover:bg-white hover:shadow-md text-slate-400 hover:text-red-600 transition-all border border-transparent hover:border-slate-100"
+                                                    title="Eliminar actividad"
+                                                >
+                                                    <Trash2 size={20} />
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Financial Stats Grid */}
@@ -358,14 +362,18 @@ const Activities: React.FC = () => {
                                                             </div>
                                                         </td>
                                                         <td className="px-6 py-5 text-center">
-                                                            <input
-                                                                type="number"
-                                                                min="0"
-                                                                max={selectedActivity.totalTicketsPerMember}
-                                                                value={ma.ticketsSold}
-                                                                onChange={(e) => handleTicketUpdate(ma.id, 'ticketsSold', Number(e.target.value))}
-                                                                className="w-20 text-center bg-white border border-slate-200 rounded-lg py-1.5 focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all font-medium text-slate-700"
-                                                            />
+                                                            {currentUser?.role === 'socio' ? (
+                                                                <span className="font-bold text-slate-700">{ma.ticketsSold}</span>
+                                                            ) : (
+                                                                <input
+                                                                    type="number"
+                                                                    min="0"
+                                                                    max={selectedActivity.totalTicketsPerMember}
+                                                                    value={ma.ticketsSold}
+                                                                    onChange={(e) => handleTicketUpdate(ma.id, 'ticketsSold', Number(e.target.value))}
+                                                                    className="w-20 text-center bg-white border border-slate-200 rounded-lg py-1.5 focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all font-medium text-slate-700"
+                                                                />
+                                                            )}
                                                         </td>
                                                         <td className="px-6 py-5 text-center bg-emerald-50/50">
                                                             <span className="font-bold text-emerald-700">${totalToPay.toFixed(2)}</span>
@@ -386,6 +394,11 @@ const Activities: React.FC = () => {
                                                                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
                                                                     <CheckCircle size={12} className="mr-1" />
                                                                     Completado
+                                                                </span>
+                                                            ) : currentUser?.role === 'socio' && currentUser.memberId === ma.memberId && totalToPay < (selectedActivity.totalTicketsPerMember * selectedActivity.ticketPrice) ? (
+                                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                                                    <AlertTriangle size={12} className="mr-1" />
+                                                                    Falta Pagar
                                                                 </span>
                                                             ) : (
                                                                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">

@@ -16,25 +16,33 @@ type PaymentRow = {
 const Payments: React.FC = () => {
     const { members, weeklyPayments, monthlyFees, recordWeeklyPayment, recordMonthlyFee, currentUser } = useBanquito();
 
-    // Initialize from localStorage or default to current date
+    // Initialize from localStorage only for socio users, otherwise use current date
     const getInitialMonth = () => {
-        const saved = localStorage.getItem('payments_selected_month');
-        return saved !== null ? parseInt(saved) : new Date().getMonth();
+        if (currentUser?.role === 'socio') {
+            const saved = localStorage.getItem(`payments_selected_month_${currentUser.id}`);
+            return saved !== null ? parseInt(saved) : new Date().getMonth();
+        }
+        return new Date().getMonth();
     };
 
     const getInitialYear = () => {
-        const saved = localStorage.getItem('payments_selected_year');
-        return saved !== null ? parseInt(saved) : new Date().getFullYear();
+        if (currentUser?.role === 'socio') {
+            const saved = localStorage.getItem(`payments_selected_year_${currentUser.id}`);
+            return saved !== null ? parseInt(saved) : new Date().getFullYear();
+        }
+        return new Date().getFullYear();
     };
 
     const [selectedMonth, setSelectedMonth] = useState(getInitialMonth);
     const [selectedYear, setSelectedYear] = useState(getInitialYear);
 
-    // Save to localStorage whenever month or year changes
+    // Save to localStorage only for socio users whenever month or year changes
     useEffect(() => {
-        localStorage.setItem('payments_selected_month', selectedMonth.toString());
-        localStorage.setItem('payments_selected_year', selectedYear.toString());
-    }, [selectedMonth, selectedYear]);
+        if (currentUser?.role === 'socio') {
+            localStorage.setItem(`payments_selected_month_${currentUser.id}`, selectedMonth.toString());
+            localStorage.setItem(`payments_selected_year_${currentUser.id}`, selectedYear.toString());
+        }
+    }, [selectedMonth, selectedYear, currentUser]);
 
     const months = [
         'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
