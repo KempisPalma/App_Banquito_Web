@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useBanquito } from '../context/BanquitoContext';
-import { Users, DollarSign, TrendingUp, AlertCircle, ArrowUpRight, ArrowDownRight, Activity } from 'lucide-react';
+import { Users, DollarSign, TrendingUp, AlertCircle, ArrowUpRight, ArrowDownRight, Activity, Calendar } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { motion } from 'framer-motion';
 
@@ -75,19 +75,44 @@ const Dashboard: React.FC = () => {
     const navigate = useNavigate();
     const { members, weeklyPayments, loans, monthlyFees, currentUser } = useBanquito();
 
+    const isSocio = currentUser?.role === 'socio';
+
+    // Filter data based on role
+    const filteredWeeklyPayments = React.useMemo(() => {
+        if (isSocio && currentUser?.memberId) {
+            return weeklyPayments.filter(p => p.memberId === currentUser.memberId);
+        }
+        return weeklyPayments;
+    }, [weeklyPayments, isSocio, currentUser]);
+
+    const filteredMonthlyFees = React.useMemo(() => {
+        if (isSocio && currentUser?.memberId) {
+            return monthlyFees.filter(f => f.memberId === currentUser.memberId);
+        }
+        return monthlyFees;
+    }, [monthlyFees, isSocio, currentUser]);
+
+    const filteredLoans = React.useMemo(() => {
+        if (isSocio && currentUser?.memberId) {
+            return loans.filter(l => l.memberId === currentUser.memberId);
+        }
+        return loans;
+    }, [loans, isSocio, currentUser]);
+
+
     // Calculate real-time stats
     const totalSavings = React.useMemo(() => {
-        return weeklyPayments.reduce((acc, curr) => acc + curr.amount, 0) +
-            monthlyFees.reduce((acc, curr) => acc + curr.amount, 0);
-    }, [weeklyPayments, monthlyFees]);
+        return filteredWeeklyPayments.reduce((acc, curr) => acc + curr.amount, 0) +
+            filteredMonthlyFees.reduce((acc, curr) => acc + curr.amount, 0);
+    }, [filteredWeeklyPayments, filteredMonthlyFees]);
 
     const activeLoans = React.useMemo(() => {
-        return loans.filter(l => l.status !== 'paid').length;
-    }, [loans]);
+        return filteredLoans.filter(l => l.status !== 'paid').length;
+    }, [filteredLoans]);
 
     const totalLoaned = React.useMemo(() => {
-        return loans.reduce((acc, curr) => acc + curr.amount, 0);
-    }, [loans]);
+        return filteredLoans.reduce((acc, curr) => acc + curr.amount, 0);
+    }, [filteredLoans]);
 
     const totalActions = React.useMemo(() => {
         return members.reduce((acc, m) => {
@@ -139,21 +164,21 @@ const Dashboard: React.FC = () => {
                         value={`${members.length} / ${totalActions}`}
                         icon={Users}
                         color="bg-blue-500"
-                        trend="+2 este mes"
+                        trend={isSocio ? undefined : "+2 este mes"}
                     />
                 </motion.div>
                 <motion.div variants={item}>
                     <StatCard
-                        title="Ahorro Total"
+                        title={isSocio ? "Mi Ahorro Total" : "Ahorro Total"}
                         value={`$${totalSavings.toFixed(2)}`}
                         icon={DollarSign}
                         color="bg-emerald-500"
-                        trend="+12% vs mes anterior"
+                        trend={isSocio ? undefined : "+12% vs mes anterior"}
                     />
                 </motion.div>
                 <motion.div variants={item}>
                     <StatCard
-                        title="Préstamos Activos"
+                        title={isSocio ? "Mis Préstamos Activos" : "Préstamos Activos"}
                         value={activeLoans.toString()}
                         icon={AlertCircle}
                         color="bg-orange-500"
@@ -161,7 +186,7 @@ const Dashboard: React.FC = () => {
                 </motion.div>
                 <motion.div variants={item}>
                     <StatCard
-                        title="Capital Prestado"
+                        title={isSocio ? "Mi Capital Prestado" : "Capital Prestado"}
                         value={`$${totalLoaned.toFixed(2)}`}
                         icon={TrendingUp}
                         color="bg-purple-500"
@@ -175,13 +200,13 @@ const Dashboard: React.FC = () => {
                     <div className="flex items-center justify-between mb-6">
                         <h3 className="text-lg font-bold text-slate-800 flex items-center">
                             <AlertCircle className="mr-2 text-orange-500" size={20} />
-                            Préstamos Pendientes
+                            {isSocio ? "Mis Préstamos Pendientes" : "Préstamos Pendientes"}
                         </h3>
                         <a href="/loans" className="text-sm text-primary-600 font-medium hover:text-primary-700">Ver todos</a>
                     </div>
 
                     <div className="space-y-3">
-                        {loans.filter(l => l.status !== 'paid').slice(0, 5).map((loan) => {
+                        {filteredLoans.filter(l => l.status !== 'paid').slice(0, 5).map((loan) => {
                             const member = loan.borrowerType === 'member' ? members.find(m => m.id === loan.memberId) : null;
                             const borrowerName = loan.borrowerType === 'member' ? (member?.name || 'Socio Desconocido') : loan.clientName;
                             const totalPaid = loan.payments.reduce((acc, curr) => acc + curr.amount, 0);
@@ -220,10 +245,10 @@ const Dashboard: React.FC = () => {
                                 </div>
                             );
                         })}
-                        {loans.filter(l => l.status !== 'paid').length === 0 && (
+                        {filteredLoans.filter(l => l.status !== 'paid').length === 0 && (
                             <div className="text-center py-8 text-slate-400">
                                 <AlertCircle size={48} className="mx-auto mb-2 opacity-20" />
-                                <p className="text-sm">No hay préstamos pendientes</p>
+                                <p className="text-sm">No tienes préstamos pendientes</p>
                             </div>
                         )}
                     </div>
@@ -236,7 +261,7 @@ const Dashboard: React.FC = () => {
                         <div className="flex items-center justify-between mb-6">
                             <h3 className="text-lg font-bold text-slate-800 flex items-center">
                                 <Activity className="mr-2 text-primary-500" size={20} />
-                                Actividad Reciente
+                                {isSocio ? "Mi Actividad Reciente" : "Actividad Reciente"}
                             </h3>
                             <button
                                 onClick={() => navigate('/payments')}
@@ -247,7 +272,7 @@ const Dashboard: React.FC = () => {
                         </div>
 
                         <div className="space-y-4">
-                            {weeklyPayments
+                            {filteredWeeklyPayments
                                 .slice()
                                 .sort((a, b) => new Date(b.date || Date.now()).getTime() - new Date(a.date || Date.now()).getTime())
                                 .slice(0, 5)
@@ -276,7 +301,7 @@ const Dashboard: React.FC = () => {
                                         </div>
                                     );
                                 })}
-                            {weeklyPayments.length === 0 && (
+                            {filteredWeeklyPayments.length === 0 && (
                                 <div className="text-center py-8 text-slate-400">
                                     <Activity size={48} className="mx-auto mb-2 opacity-20" />
                                     <p className="text-sm">No hay actividad reciente</p>
@@ -286,11 +311,11 @@ const Dashboard: React.FC = () => {
                     </Card>
                 </motion.div>
 
-                <motion.div variants={item}>
-                    <Card className="h-full bg-gradient-to-br from-primary-900 to-primary-800 text-white border-none">
+                <motion.div variants={item} className="space-y-6">
+                    <Card className="bg-gradient-to-br from-primary-900 to-primary-800 text-white border-none">
                         <h3 className="text-lg font-bold mb-4">Acciones Rápidas</h3>
                         <div className="space-y-3">
-                            {currentUser?.role === 'socio' ? (
+                            {isSocio ? (
                                 <>
                                     <button
                                         onClick={() => navigate('/payments')}
@@ -347,6 +372,26 @@ const Dashboard: React.FC = () => {
                             <p className="text-xs text-primary-300 mt-1">10:00 AM - Casa Comunal</p>
                         </div>
                     </Card>
+
+                    {/* Members List - Visible for everyone but simplified */}
+                    <Card title="Nuestros Socios" className="max-h-[400px] overflow-y-auto">
+                        <div className="space-y-3">
+                            {members.map(member => (
+                                <div key={member.id} className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-lg transition-colors">
+                                    <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center text-primary-600 font-bold text-sm">
+                                        {member.name.charAt(0)}
+                                    </div>
+                                    <div>
+                                        <p className="font-medium text-slate-900 text-sm">{member.name}</p>
+                                        <div className="flex items-center text-xs text-slate-500">
+                                            <Calendar size={12} className="mr-1" />
+                                            <span>Miembro desde {new Date(member.joinedDate).toLocaleDateString()}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </Card>
                 </motion.div>
             </div>
         </motion.div>
@@ -354,3 +399,4 @@ const Dashboard: React.FC = () => {
 };
 
 export default Dashboard;
+

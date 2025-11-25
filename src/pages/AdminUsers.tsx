@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { useBanquito } from '../context/BanquitoContext';
 import { Card } from '../components/ui/Card';
+import { Modal } from '../components/ui/Modal';
 import type { User, Permission } from '../types';
-import { Trash2, Edit2 } from 'lucide-react';
+import { Trash2, Edit2, AlertTriangle } from 'lucide-react';
 
 const AdminUsers: React.FC = () => {
     const { users, addUser, updateUser, deleteUser, currentUser, members } = useBanquito();
     const [isEditing, setIsEditing] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
+    const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
     const initialFormState = {
         username: '',
@@ -78,8 +80,13 @@ const AdminUsers: React.FC = () => {
     };
 
     const handleDelete = (id: string) => {
-        if (window.confirm('¿Estás seguro de eliminar este usuario?')) {
-            deleteUser(id);
+        setDeleteConfirmId(id);
+    };
+
+    const confirmDelete = () => {
+        if (deleteConfirmId) {
+            deleteUser(deleteConfirmId);
+            setDeleteConfirmId(null);
         }
     };
 
@@ -159,8 +166,8 @@ const AdminUsers: React.FC = () => {
                                     value={formData.cedula}
                                     onChange={e => handleCedulaChange(e.target.value)}
                                     className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 ${cedulaStatus === 'found' ? 'border-emerald-500 bg-emerald-50' :
-                                            cedulaStatus === 'not-found' ? 'border-amber-500 bg-amber-50' :
-                                                'border-slate-200'
+                                        cedulaStatus === 'not-found' ? 'border-amber-500 bg-amber-50' :
+                                            'border-slate-200'
                                         }`}
                                 />
                                 {cedulaStatus === 'found' && (
@@ -301,8 +308,53 @@ const AdminUsers: React.FC = () => {
                     </Card>
                 </div>
             </div>
+
+            {/* Delete Confirmation Modal */}
+            <Modal
+                isOpen={!!deleteConfirmId}
+                onClose={() => setDeleteConfirmId(null)}
+                title="Confirmar Eliminación"
+                footer={
+                    <>
+                        <button
+                            onClick={() => setDeleteConfirmId(null)}
+                            className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                        >
+                            Cancelar
+                        </button>
+                        <button
+                            onClick={confirmDelete}
+                            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                        >
+                            Eliminar Usuario
+                        </button>
+                    </>
+                }
+            >
+                <div className="flex items-start gap-4">
+                    <div className="p-2 bg-amber-100 rounded-full text-amber-600">
+                        <AlertTriangle className="w-6 h-6" />
+                    </div>
+                    <div>
+                        <p className="text-slate-600">
+                            ¿Estás seguro de que deseas eliminar este usuario? Esta acción no se puede deshacer.
+                        </p>
+                        {deleteConfirmId && (
+                            <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-100">
+                                <span className="text-sm font-medium text-slate-900">
+                                    {users.find(u => u.id === deleteConfirmId)?.name}
+                                </span>
+                                <span className="text-xs text-slate-500 block">
+                                    @{users.find(u => u.id === deleteConfirmId)?.username}
+                                </span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </Modal>
         </div >
     );
 };
 
 export default AdminUsers;
+

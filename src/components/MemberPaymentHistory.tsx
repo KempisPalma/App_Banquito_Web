@@ -186,12 +186,12 @@ export const MemberPaymentHistory: React.FC<MemberPaymentHistoryProps> = ({
                                         <td className="px-4 py-2 text-center bg-purple-50/10">
                                             <div className={`
                                                 mx-auto px-3 py-1.5 rounded-full text-xs font-bold inline-flex items-center gap-1.5
-                                                ${feeStatus.paid
+                                                ${feeStatus.amount > 0
                                                     ? 'bg-purple-100 text-purple-700 shadow-sm shadow-purple-200'
                                                     : 'bg-red-50 text-red-300 border border-red-100'
                                                 }
                                             `}>
-                                                {feeStatus.paid ? (
+                                                {feeStatus.amount > 0 ? (
                                                     <>
                                                         <Check size={12} strokeWidth={3} />
                                                         ${feeStatus.amount}
