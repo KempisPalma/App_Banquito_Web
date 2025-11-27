@@ -1,0 +1,639 @@
+```typescript
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useBanquito } from '../context/BanquitoContext';
+import { LayoutDashboard, Users, DollarSign, TrendingUp, AlertCircle, ArrowUpRight, ArrowDownRight, Activity, Calendar, Ticket, Gift, CreditCard, Menu, X, Bell, Search, ChevronLeft, ChevronRight, Clock, Settings, Download, Upload, LogOut, Shield, FileText, Phone, Save, User as UserIcon } from 'lucide-react';
+import { Card } from '../components/ui/Card';
+import { Modal } from '../components/ui/Modal';
+import { motion } from 'framer-motion';
+import clsx from 'clsx';
+
+const StatCard: React.FC<{
+    title: string;
+    value: string;
+    icon: any;
+    color: string;
+    trend?: string;
+    action?: { label: string; onClick: () => void };
+    onClick?: () => void;
+}> = ({ title, value, icon: Icon, color, trend, action, onClick }) => {
+    // Map the input color class to a style object
+    const getStyle = (colorClass: string) => {
+        switch (colorClass) {
+            case 'bg-blue-500': return {
+                gradient: 'from-blue-500 to-blue-600',
+                shadow: 'shadow-blue-500/30',
+                light: 'bg-blue-50',
+                text: 'text-blue-600'
+            };
+            case 'bg-emerald-500': return {
+                gradient: 'from-emerald-500 to-emerald-600',
+                shadow: 'shadow-emerald-500/30',
+                light: 'bg-emerald-50',
+                text: 'text-emerald-600'
+            };
+            case 'bg-orange-500': return {
+                gradient: 'from-orange-500 to-orange-600',
+                shadow: 'shadow-orange-500/30',
+                light: 'bg-orange-50',
+                text: 'text-orange-600'
+            };
+            case 'bg-purple-500': return {
+                gradient: 'from-purple-500 to-purple-600',
+                shadow: 'shadow-purple-500/30',
+                light: 'bg-purple-50',
+                text: 'text-purple-600'
+            };
+            case 'bg-pink-500': return {
+                gradient: 'from-pink-500 to-pink-600',
+                shadow: 'shadow-pink-500/30',
+                light: 'bg-pink-50',
+                text: 'text-pink-600'
+            };
+            default: return {
+                gradient: 'from-slate-500 to-slate-600',
+                shadow: 'shadow-slate-500/30',
+                light: 'bg-slate-50',
+                text: 'text-slate-600'
+            };
+        }
+    };
+
+    const style = getStyle(color);
+
+    return (
+        <Card
+            className={`relative overflow-hidden group hover:-translate-y-2 transition-all duration-300 hover:shadow-xl border border-slate-100 ${onClick ? 'cursor-pointer' : ''}`}
+            onClick={onClick}
+        >
+            {/* Background Decoration */}
+            <div className={`absolute -right-6 -top-6 w-32 h-32 rounded-full opacity-0 group-hover:opacity-10 transition-opacity duration-500 bg-gradient-to-br ${style.gradient}`} />
+
+            <div className="relative z-10">
+                <div className="flex justify-between items-start mb-4">
+                    <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${style.gradient} flex items-center justify-center shadow-lg ${style.shadow} group-hover:scale-110 transition-transform duration-300`}>
+                        <Icon size={28} className="text-white" />
+                    </div>
+                    {trend && (
+                        <div className="flex items-center px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-100 text-xs font-bold text-emerald-600">
+                            <TrendingUp size={14} className="mr-1" />
+                            {trend}
+                        </div>
+                    )}
+                </div>
+
+                <div className="space-y-1">
+                    <div className="flex justify-between items-center">
+                        <p className="text-sm text-slate-500 font-medium">{title}</p>
+                        {action && (
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    action.onClick();
+                                }}
+                                className={`text - xs font - bold ${ style.text } hover:underline z - 20`}
+                            >
+                                {action.label}
+                            </button>
+                        )}
+                    </div>
+                    <h3 className="text-3xl font-black text-slate-800 tracking-tight">{value}</h3>
+                </div>
+            </div>
+        </Card>
+    );
+};
+
+const Dashboard: React.FC = () => {
+    const navigate = useNavigate();
+    const { loans, members, currentUser, logout, activities, users, notifications, updateMember, weeklyPayments, monthlyFees, memberActivities } = useBanquito();
+    const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
+    const [isActivitiesModalOpen, setIsActivitiesModalOpen] = useState(false);
+    const [isProfileModalOpen, setIsProfileModalOpen] = React.useState(false);
+    const [editingPhone, setEditingPhone] = React.useState('');
+
+    const isSocio = currentUser?.role === 'socio';
+
+    // Filter data based on role
+    const filteredWeeklyPayments = React.useMemo(() => {
+        if (isSocio && currentUser?.memberId) {
+            return weeklyPayments.filter(p => p.memberId === currentUser.memberId);
+        }
+        return weeklyPayments;
+    }, [weeklyPayments, isSocio, currentUser]);
+
+    const filteredMonthlyFees = React.useMemo(() => {
+        if (isSocio && currentUser?.memberId) {
+            return monthlyFees.filter(f => f.memberId === currentUser.memberId);
+        }
+        return monthlyFees;
+    }, [monthlyFees, isSocio, currentUser]);
+
+    const filteredLoans = React.useMemo(() => {
+        if (isSocio && currentUser?.memberId) {
+            return loans.filter(l => l.memberId === currentUser.memberId);
+        }
+        return loans;
+    }, [loans, isSocio, currentUser]);
+
+
+    // Calculate real-time stats
+    const totalSavings = React.useMemo(() => {
+        return filteredWeeklyPayments.reduce((acc, curr) => acc + curr.amount, 0) +
+            filteredMonthlyFees.reduce((acc, curr) => acc + curr.amount, 0);
+    }, [filteredWeeklyPayments, filteredMonthlyFees]);
+
+    const activeLoans = React.useMemo(() => {
+        return filteredLoans.filter(l => l.status !== 'paid').length;
+    }, [filteredLoans]);
+
+    const totalLoaned = React.useMemo(() => {
+        return filteredLoans.reduce((acc, curr) => acc + curr.amount, 0);
+    }, [filteredLoans]);
+
+    const totalActions = React.useMemo(() => {
+        return members.reduce((acc, m) => {
+            // If member has aliases, count them. Otherwise count as 1.
+            const actionCount = (m.aliases && m.aliases.length > 0) ? m.aliases.length : 1;
+            return acc + actionCount;
+        }, 0);
+    }, [members]);
+
+    const activitiesStatus = React.useMemo(() => {
+        if (!isSocio || !currentUser?.memberId) return { pending: [], completed: [] };
+
+        const pending: { id: string; name: string; moneyPaid: number; moneyPending: number }[] = [];
+        const completed: { id: string; name: string; }[] = [];
+
+        activities.forEach(activity => {
+            // Find all member activity records for this member
+            const memberRecords = memberActivities.filter(ma =>
+                ma.activityId === activity.id && ma.memberId === currentUser.memberId
+            );
+
+            if (memberRecords.length === 0) return;
+
+            let activityMoneyPaid = 0;
+            let activityMoneyPending = 0;
+            let isActivityPending = false;
+
+            memberRecords.forEach(ma => {
+                const totalTickets = activity.totalTicketsPerMember;
+                const price = activity.ticketPrice;
+                const ticketsReturned = ma.ticketsReturned || 0;
+
+                // Calculate total obligation based on tickets kept (not returned)
+                const ticketsKept = Math.max(0, totalTickets - ticketsReturned);
+                const totalObligation = ticketsKept * price;
+
+                // Use ticketsSold * price as paid amount to match Activities.tsx logic
+                const paid = (ma.ticketsSold || 0) * price;
+                const remaining = Math.max(0, totalObligation - paid);
+
+                activityMoneyPaid += paid;
+                activityMoneyPending += remaining;
+
+                // If there is any money pending, the activity is pending
+                // Use small epsilon for floating point comparison
+                if (remaining > 0.001) {
+                    isActivityPending = true;
+                }
+            });
+
+            if (isActivityPending) {
+                pending.push({
+                    id: activity.id,
+                    name: activity.name,
+                    moneyPaid: activityMoneyPaid,
+                    moneyPending: activityMoneyPending
+                });
+            } else {
+                completed.push({
+                    id: activity.id,
+                    name: activity.name
+                });
+            }
+        });
+        return { pending, completed };
+    }, [activities, memberActivities, isSocio, currentUser]);
+
+    // Calculate loan notifications
+    const allNotifications = React.useMemo(() => {
+        const now = new Date();
+        let relevantLoans = loans.filter(loan => loan.status !== 'paid');
+
+        // If user is socio, only show their own loans
+        if (currentUser?.role === 'socio' && currentUser.memberId) {
+            relevantLoans = relevantLoans.filter(loan =>
+                loan.borrowerType === 'member' && loan.memberId === currentUser.memberId
+            );
+        }
+
+        const loanNotifs = relevantLoans
+            .map(loan => {
+                const endDate = new Date(loan.endDate);
+                const daysUntilDue = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+                const isOverdue = daysUntilDue < 0;
+                const isDueSoon = daysUntilDue > 0 && daysUntilDue <= 7;
+
+                if (isOverdue || isDueSoon) {
+                    const member = loan.borrowerType === 'member' ? members.find(m => m.id === loan.memberId) : null;
+                    const borrowerName = loan.borrowerType === 'member' ? (member?.name || 'Socio Desconocido') : loan.clientName;
+
+                    return {
+                        id: loan.id,
+                        message: `${ borrowerName }: Préstamo ${ isOverdue ? 'vencido' : 'vence pronto' } (${ Math.abs(daysUntilDue) } días)`,
+                        type: isOverdue ? 'error' : 'warning',
+                        date: loan.endDate
+                    };
+                }
+                return null;
+            })
+            .filter(Boolean) as { id: string; message: string; type: 'error' | 'warning' | 'info'; date: string }[];
+
+        // Merge with system notifications
+        const systemNotifs = notifications || [];
+        
+        return [...loanNotifs, ...systemNotifs].sort((a, b) => 
+            new Date(b.date).getTime() - new Date(a.date).getTime()
+        );
+    }, [loans, members, currentUser, notifications]);
+
+    const handleProfileClick = () => {
+        if (currentUser?.memberId) {
+            const member = members.find(m => m.id === currentUser.memberId);
+            if (member) {
+                setEditingPhone(member.phone || '');
+            }
+        }
+        setIsProfileModalOpen(true);
+    };
+
+    const handleSaveProfile = () => {
+        if (currentUser?.memberId) {
+            updateMember(currentUser.memberId, { phone: editingPhone });
+            setIsProfileModalOpen(false);
+        }
+    };
+
+    const handleExportData = () => {
+        const data = {
+            members: members,
+            weeklyPayments: weeklyPayments,
+            monthlyFees: monthlyFees,
+            loans: loans,
+            activities: activities,
+            memberActivities: memberActivities,
+            users: users,
+            exportDate: new Date().toISOString()
+        };
+        const jsonString = `data: text / json; charset = utf - 8, ${ encodeURIComponent(JSON.stringify(data, null, 2)) } `;
+        const link = document.createElement('a');
+        link.href = jsonString;
+        link.download = `banquito_data_${ new Date().toISOString().slice(0, 10) }.json`;
+        link.click();
+    };
+
+    const handleImportData = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const importedData = JSON.parse(e.target?.result as string);
+                    if (importedData.members) localStorage.setItem('banquito_members', JSON.stringify(importedData.members));
+                    if (importedData.weeklyPayments) localStorage.setItem('banquito_weeklyPayments', JSON.stringify(importedData.weeklyPayments));
+                    if (importedData.monthlyFees) localStorage.setItem('banquito_monthlyFees', JSON.stringify(importedData.monthlyFees));
+                    if (importedData.loans) localStorage.setItem('banquito_loans', JSON.stringify(importedData.loans));
+                    if (importedData.activities) localStorage.setItem('banquito_activities', JSON.stringify(importedData.activities));
+                    if (importedData.memberActivities) localStorage.setItem('banquito_memberActivities', JSON.stringify(importedData.memberActivities));
+                    if (importedData.users) localStorage.setItem('banquito_users', JSON.stringify(importedData.users));
+                    alert('Datos importados correctamente. La página se recargará.');
+                    window.location.reload();
+                } catch (error) {
+                    alert('Error al importar datos: ' + error);
+                }
+            };
+            reader.readAsText(file);
+        }
+    };
+
+    const handleLogout = () => {
+        logout();
+        navigate('/login');
+    };
+
+    const container = {
+        hidden: { opacity: 0 },
+        show: {
+            opacity: 1,
+            transition: {
+                staggerChildren: 0.1
+            }
+        }
+    };
+
+    const item = {
+        hidden: { opacity: 0, y: 20 },
+        show: { opacity: 1, y: 0 }
+    };
+
+    return (
+        <motion.div
+            variants={container}
+            initial="hidden"
+            animate="show"
+            className="space-y-8"
+        >
+            <div className="flex items-center justify-between">
+                <div>
+                    <h1 className="text-3xl font-bold text-slate-900">Resumen General</h1>
+                    <p className="text-slate-500 mt-1">Bienvenido de nuevo, aquí está lo que sucede hoy.</p>
+                </div>
+                <div className="flex space-x-2">
+                    <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 text-sm font-medium flex items-center">
+                        <div className="w-2 h-2 rounded-full bg-emerald-500 mr-2 animate-pulse" />
+                        Sistema Activo
+                    </span>
+                </div>
+            </div>
+
+            <motion.div variants={container} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <motion.div variants={item}>
+                    <StatCard
+                        title="Nuestros Socios"
+                        value={members.length.toString()}
+                        icon={Users}
+                        color="bg-blue-500"
+                        action={{ label: 'Ver todos', onClick: () => setIsMembersModalOpen(true) }}
+                    />
+                </motion.div>
+                <motion.div variants={item}>
+                    <StatCard
+                        title="Ahorros Totales"
+                        value={`$${ totalSavings.toFixed(2) } `}
+                        icon={DollarSign}
+                        color="bg-emerald-500"
+                        trend="+12% este mes"
+                    />
+                </motion.div>
+                <motion.div variants={item}>
+                    <StatCard
+                        title="Préstamos Activos"
+                        value={activeLoans.toString()}
+                        icon={CreditCard}
+                        color="bg-orange-500"
+                        action={{ label: 'Ver préstamos', onClick: () => navigate('/loans') }}
+                    />
+                </motion.div>
+                <motion.div variants={item}>
+                    <StatCard
+                        title="Actividades Pendientes"
+                        value={activitiesStatus.pending.length.toString()}
+                        icon={Ticket}
+                        color="bg-purple-500"
+                        action={{ label: 'Ver actividades', onClick: () => setIsActivitiesModalOpen(true) }}
+                    />
+                </motion.div>
+            </motion.div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <motion.div variants={item} className="lg:col-span-2">
+                    <Card className="p-6">
+                        <h2 className="text-xl font-bold text-slate-900 mb-4">Actividad Reciente</h2>
+                        <div className="space-y-4">
+                            {allNotifications.length > 0 ? (
+                                allNotifications.slice(0, 5).map((notification, index) => (
+                                    <motion.div
+                                        key={notification.id || index}
+                                        initial={{ opacity: 0, y: 10 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ delay: index * 0.05 }}
+                                        className={clsx(
+                                            "flex items-center p-3 rounded-xl border",
+                                            notification.type === 'error' && 'bg-red-50 border-red-100 text-red-700',
+                                            notification.type === 'warning' && 'bg-orange-50 border-orange-100 text-orange-700',
+                                            notification.type === 'info' && 'bg-blue-50 border-blue-100 text-blue-700',
+                                            !notification.type && 'bg-slate-50 border-slate-100 text-slate-700'
+                                        )}
+                                    >
+                                        {notification.type === 'error' && <AlertCircle size={20} className="mr-3" />}
+                                        {notification.type === 'warning' && <Bell size={20} className="mr-3" />}
+                                        {notification.type === 'info' && <LayoutDashboard size={20} className="mr-3" />}
+                                        {!notification.type && <Activity size={20} className="mr-3" />}
+                                        <p className="text-sm flex-1">{notification.message}</p>
+                                        <span className="text-xs text-slate-500 ml-4 whitespace-nowrap">
+                                            {new Date(notification.date).toLocaleDateString('es-EC', { day: 'numeric', month: 'short' })}
+                                        </span>
+                                    </motion.div>
+                                ))
+                            ) : (
+                                <div className="text-center py-8 text-slate-400">
+                                    <Bell size={48} className="mx-auto mb-2 opacity-20" />
+                                    <p className="text-sm">No hay actividad reciente.</p>
+                                </div>
+                            )}
+                        </div>
+                    </Card>
+                </motion.div>
+
+                <motion.div variants={item} className="lg:col-span-1">
+                    <Card className="p-6">
+                        <h2 className="text-xl font-bold text-slate-900 mb-4">Configuración Rápida</h2>
+                        <div className="space-y-2">
+                            <button
+                                onClick={handleProfileClick}
+                                className="w-full flex items-center px-4 py-3 rounded-xl text-slate-600 hover:bg-slate-50 hover:text-primary-600 transition-colors"
+                            >
+                                <UserIcon size={18} className="mr-3" />
+                                Mi Perfil
+                            </button>
+                            {currentUser?.role === 'admin' && (
+                                <>
+                                    <button
+                                        onClick={handleExportData}
+                                        className="w-full flex items-center px-4 py-3 rounded-xl text-slate-600 hover:bg-slate-50 hover:text-primary-600 transition-colors"
+                                    >
+                                        <Download size={18} className="mr-3" />
+                                        Exportar Datos
+                                    </button>
+                                    <label className="w-full flex items-center px-4 py-3 rounded-xl text-slate-600 hover:bg-slate-50 hover:text-primary-600 transition-colors cursor-pointer">
+                                        <Upload size={18} className="mr-3" />
+                                        Importar Datos
+                                        <input type="file" accept=".json" onChange={handleImportData} className="hidden" />
+                                    </label>
+                                </>
+                            )}
+                            <button
+                                onClick={handleLogout}
+                                className="w-full flex items-center px-4 py-3 rounded-xl text-red-600 hover:bg-red-50 transition-colors"
+                            >
+                                <LogOut size={18} className="mr-3" />
+                                Cerrar Sesión
+                            </button>
+                        </div>
+                    </Card>
+                </motion.div>
+            </div>
+
+            <Modal
+                isOpen={isMembersModalOpen}
+                onClose={() => setIsMembersModalOpen(false)}
+                title="Nuestros Socios"
+            >
+                    <div className="max-h-[60vh] overflow-y-auto pr-2">
+                        <div className="grid grid-cols-1 gap-3">
+                            {members.map((member, index) => (
+                                <motion.div
+                                    key={member.id}
+                                            <Calendar size={14} className="mr-1.5" />
+                                            <span>Miembro desde {new Date(member.joinedDate).toLocaleDateString('es-EC', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            ))}
+                        </div>
+                    </div>
+                </Modal>
+
+                <Modal
+                    isOpen={isActivitiesModalOpen}
+                    onClose={() => setIsActivitiesModalOpen(false)}
+                    title="Mis Actividades"
+                >
+                    <div className="max-h-[60vh] overflow-y-auto pr-2 space-y-6">
+                        {/* Pendientes */}
+                        {activitiesStatus.pending.length > 0 && (
+                            <div>
+                                <h4 className="text-sm font-bold text-orange-600 mb-3 flex items-center">
+                                    <AlertCircle size={16} className="mr-2" />
+                                    Pendientes ({activitiesStatus.pending.length})
+                                </h4>
+                                <div className="grid grid-cols-1 gap-3">
+                                    {activitiesStatus.pending.map((item, index) => (
+                                        <motion.div
+                                            key={item.id}
+                                            initial={{ opacity: 0, x: -10 }}
+                                            animate={{ opacity: 1, x: 0 }}
+                                            transition={{ delay: index * 0.05 }}
+                                            className="flex items-start gap-4 p-4 rounded-2xl bg-orange-50 border border-orange-100"
+                                        >
+                                            <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 shrink-0">
+                                                <Ticket size={20} />
+                                            </div>
+                                            <div className="flex-1">
+                                                <p className="text-base font-bold text-slate-800">{item.name}</p>
+                                                <div className="mt-1">
+                                                    <p className="text-sm text-slate-600">
+                                                        Pagado: <span className="font-bold text-emerald-600">${item.moneyPaid.toFixed(2)}</span>
+                                                        <span className="mx-2 text-slate-300">|</span>
+                                                        Falta: <span className="font-bold text-orange-600">${item.moneyPending.toFixed(2)}</span>
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </motion.div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Completadas */}
+                        {activitiesStatus.completed.length > 0 && (
+                            <div>
+                                <h4 className="text-sm font-bold text-emerald-600 mb-3 flex items-center">
+                                    <Activity size={16} className="mr-2" />
+                                    Pagadas ({activitiesStatus.completed.length})
+                                </h4>
+                                <div className="grid grid-cols-1 gap-3">
+                                    {activitiesStatus.completed.map((item, index) => (
+                                        <motion.div
+                                            key={item.id}
+                                            initial={{ opacity: 0, x: -10 }}
+                                            animate={{ opacity: 1, x: 0 }}
+                                            transition={{ delay: index * 0.05 }}
+                                            className="flex items-center gap-4 p-4 rounded-2xl bg-emerald-50 border border-emerald-100 opacity-80 hover:opacity-100 transition-opacity"
+                                        >
+                                            <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 shrink-0">
+                                                <Ticket size={20} />
+                                            </div>
+                                            <div className="flex-1">
+                                                <p className="text-base font-bold text-slate-800">{item.name}</p>
+                                                <p className="text-sm text-emerald-600 font-medium">¡Completada!</p>
+                                            </div>
+                                        </motion.div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {activitiesStatus.pending.length === 0 && activitiesStatus.completed.length === 0 && (
+                            <div className="text-center py-8 text-slate-400">
+                                <Ticket size={48} className="mx-auto mb-2 opacity-20" />
+                                <p className="text-sm">No tienes actividades registradas.</p>
+                            </div>
+                        )}
+                    </div>
+                </Modal>
+
+            <Modal
+                isOpen={isProfileModalOpen}
+                onClose={() => setIsProfileModalOpen(false)}
+                title="Mi Perfil"
+            >
+                {currentUser && (
+                    <div className="space-y-4 p-4">
+                        <div className="flex items-center space-x-4">
+                            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center text-white font-bold text-2xl shadow-md">
+                                {currentUser.username.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                                <p className="text-xl font-bold text-slate-800">{currentUser.username}</p>
+                                <p className="text-sm text-slate-500 capitalize">{currentUser.role}</p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            <div>
+                                <label htmlFor="phone" className="block text-sm font-medium text-slate-700 mb-1">Teléfono</label>
+                                <div className="relative">
+                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                        <Phone size={18} className="text-slate-400" />
+                                    </div>
+                                    <input
+                                        type="text"
+                                        id="phone"
+                                        className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                                        value={editingPhone}
+                                        onChange={(e) => setEditingPhone(e.target.value)}
+                                        placeholder="Número de teléfono"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end space-x-3 mt-6">
+                            <button
+                                type="button"
+                                onClick={() => setIsProfileModalOpen(false)}
+                                className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 rounded-md hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleSaveProfile}
+                                className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                            >
+                                <Save size={18} className="mr-2" />
+                                Guardar Cambios
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </Modal>
+            </motion.div>
+            );
+};
+
+            export default Dashboard;
+```
