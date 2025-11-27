@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useBanquito } from '../context/BanquitoContext';
-import { Plus, Calendar, DollarSign, TrendingUp, Clock, Edit2, Trash2, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react';
+import { Plus, DollarSign, TrendingUp, Clock, Edit2, Trash2, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react';
 import Modal from '../components/Modal';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -20,6 +20,7 @@ const Loans: React.FC = () => {
     const [formData, setFormData] = useState({
         borrowerType: 'member' as 'member' | 'external',
         memberId: '',
+        actionAlias: '',
         clientName: '',
         amount: 0,
         interestRate: 10,
@@ -27,8 +28,9 @@ const Loans: React.FC = () => {
         endDate: ''
     });
 
-    const [paymentAmount, setPaymentAmount] = useState(0);
-    const [paymentType, setPaymentType] = useState<'principal' | 'interest'>('principal');
+    const [paymentPrincipalAmount, setPaymentPrincipalAmount] = useState(0);
+    const [paymentInterestAmount, setPaymentInterestAmount] = useState(0);
+    const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
     const [loanFilter, setLoanFilter] = useState<'all' | 'pending' | 'paid' | 'due-soon'>('all');
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const [paymentToDelete, setPaymentToDelete] = useState<{ loanId: string; paymentId: string; amount: number } | null>(null);
@@ -54,6 +56,22 @@ const Loans: React.FC = () => {
         }
     }, [formData.borrowerType]);
 
+    // Reset action alias when member changes
+    useEffect(() => {
+        if (formData.borrowerType === 'member' && formData.memberId) {
+            const member = members.find(m => m.id === formData.memberId);
+            // If member has aliases but none selected (or invalid), select the first one by default if only 1 exists
+            if (member?.aliases && member.aliases.length === 1) {
+                setFormData(prev => ({ ...prev, actionAlias: member.aliases![0] }));
+            } else if (!member?.aliases || member.aliases.length === 0) {
+                setFormData(prev => ({ ...prev, actionAlias: '' }));
+            }
+            // If multiple aliases, we leave it empty or keep existing if valid, user must select
+        } else {
+            setFormData(prev => ({ ...prev, actionAlias: '' }));
+        }
+    }, [formData.memberId, formData.borrowerType, members]);
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (isEditMode && editingLoanId) {
@@ -61,6 +79,7 @@ const Loans: React.FC = () => {
             updateLoan(editingLoanId, {
                 borrowerType: formData.borrowerType,
                 memberId: formData.borrowerType === 'member' ? formData.memberId : undefined,
+                actionAlias: formData.borrowerType === 'member' ? formData.actionAlias : undefined,
                 clientName: formData.borrowerType === 'external' ? formData.clientName : undefined,
                 amount: Number(formData.amount),
                 interestRate: Number(formData.interestRate),
@@ -72,6 +91,7 @@ const Loans: React.FC = () => {
             addLoan({
                 borrowerType: formData.borrowerType,
                 memberId: formData.borrowerType === 'member' ? formData.memberId : undefined,
+                actionAlias: formData.borrowerType === 'member' ? formData.actionAlias : undefined,
                 clientName: formData.borrowerType === 'external' ? formData.clientName : undefined,
                 amount: Number(formData.amount),
                 interestRate: Number(formData.interestRate),
@@ -89,6 +109,7 @@ const Loans: React.FC = () => {
         setFormData({
             borrowerType: 'member',
             memberId: '',
+            actionAlias: '',
             clientName: '',
             amount: 0,
             interestRate: 10,
@@ -100,10 +121,10 @@ const Loans: React.FC = () => {
     };
 
     const openEditModal = (loan: typeof loans[0]) => {
-        const member = loan.borrowerType === 'member' ? members.find(m => m.id === loan.memberId) : null;
         setFormData({
             borrowerType: loan.borrowerType,
             memberId: loan.memberId || '',
+            actionAlias: loan.actionAlias || '',
             clientName: loan.clientName || '',
             amount: loan.amount,
             interestRate: loan.interestRate,
@@ -117,31 +138,62 @@ const Loans: React.FC = () => {
 
     const handlePaymentSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (selectedLoanId && paymentAmount > 0) {
-            if (isEditingPayment && editingPaymentId) {
-                updateLoanPayment(selectedLoanId, editingPaymentId, paymentAmount, paymentType);
-            } else {
-                addLoanPayment(selectedLoanId, paymentAmount, paymentType);
-            }
-            setPaymentModalOpen(false);
-            setPaymentAmount(0);
-            setPaymentType('principal');
-            setIsEditingPayment(false);
-            setEditingPaymentId(null);
-            setSelectedLoanId(null);
+
+        // Validate that at least one amount is entered
+        if (!selectedLoanId || (paymentPrincipalAmount <= 0 && paymentInterestAmount <= 0)) {
+            return;
         }
+
+        // Create date object from selected date, treating it as local time
+        const dateToSave = new Date(paymentDate + 'T00:00:00').toISOString();
+
+        // Register principal payment if amount > 0
+        if (paymentPrincipalAmount > 0) {
+            if (isEditingPayment && editingPaymentId) {
+                updateLoanPayment(selectedLoanId, editingPaymentId, paymentPrincipalAmount, 'principal', dateToSave);
+            } else {
+                addLoanPayment(selectedLoanId, paymentPrincipalAmount, 'principal', dateToSave);
+            }
+        }
+
+        // Register interest payment if amount > 0
+        if (paymentInterestAmount > 0) {
+            if (isEditingPayment && editingPaymentId) {
+                // For editing, we only update one payment at a time
+                // This logic might need adjustment based on your requirements
+            } else {
+                addLoanPayment(selectedLoanId, paymentInterestAmount, 'interest', dateToSave);
+            }
+        }
+
+        setPaymentModalOpen(false);
+        setPaymentPrincipalAmount(0);
+        setPaymentInterestAmount(0);
+        setPaymentDate(new Date().toISOString().split('T')[0]);
+        setIsEditingPayment(false);
+        setEditingPaymentId(null);
+        setSelectedLoanId(null);
     };
 
     const openPaymentModal = (loanId: string) => {
         setSelectedLoanId(loanId);
+        setPaymentDate(new Date().toISOString().split('T')[0]);
         setPaymentModalOpen(true);
     };
 
     const openEditPaymentModal = (loanId: string, payment: typeof loans[0]['payments'][0]) => {
         setSelectedLoanId(loanId);
         setEditingPaymentId(payment.id);
-        setPaymentAmount(payment.amount);
-        setPaymentType(payment.paymentType);
+        setPaymentDate(payment.date.split('T')[0]);
+
+        if (payment.paymentType === 'principal') {
+            setPaymentPrincipalAmount(payment.amount);
+            setPaymentInterestAmount(0);
+        } else {
+            setPaymentInterestAmount(payment.amount);
+            setPaymentPrincipalAmount(0);
+        }
+
         setIsEditingPayment(true);
         setPaymentModalOpen(true);
     };
@@ -334,16 +386,13 @@ const Loans: React.FC = () => {
                                         <div>
                                             <div className="flex items-center space-x-2">
                                                 <h3 className="font-bold text-xl text-slate-800">{borrowerName}</h3>
-                                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${loan.borrowerType === 'member' ? 'bg-primary-100 text-primary-700' : 'bg-slate-100 text-slate-600'}`}>
-                                                    {loan.borrowerType === 'member' ? 'Socio' : 'Externo'}
-                                                </span>
                                             </div>
-                                            {member?.alias && <p className="text-xs text-slate-500">{member.alias}</p>}
-                                            <div className="flex flex-col mt-2 space-y-1">
-                                                <p className="text-xs text-slate-500 flex items-center">
-                                                    <Calendar size={12} className="mr-1.5" />
-                                                    Inicio: {new Date(loan.startDate).toLocaleDateString()}
+                                            {loan.actionAlias && (
+                                                <p className="text-sm text-indigo-600 font-bold mt-0.5">
+                                                    {loan.actionAlias}
                                                 </p>
+                                            )}
+                                            <div className="flex flex-col mt-2 space-y-1">
                                                 <p className={`text-xs flex items-center font-medium ${isOverdue ? 'text-red-500' : 'text-slate-500'}`}>
                                                     <Clock size={12} className="mr-1.5" />
                                                     Vence: {new Date(loan.endDate).toLocaleDateString()}
@@ -536,20 +585,38 @@ const Loans: React.FC = () => {
                     </div>
 
                     {formData.borrowerType === 'member' ? (
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1.5">Socio</label>
-                            <select
-                                required
-                                value={formData.memberId}
-                                onChange={(e) => setFormData({ ...formData, memberId: e.target.value })}
-                                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
-                            >
-                                <option value="">Seleccionar Socio</option>
-                                {members.map(m => (
-                                    <option key={m.id} value={m.id}>{m.name}</option>
-                                ))}
-                            </select>
-                        </div>
+                        <>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1.5">Socio</label>
+                                <select
+                                    required
+                                    value={formData.memberId}
+                                    onChange={(e) => setFormData({ ...formData, memberId: e.target.value })}
+                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
+                                >
+                                    <option value="">Seleccionar Socio</option>
+                                    {members.map(m => (
+                                        <option key={m.id} value={m.id}>{m.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            {formData.memberId && members.find(m => m.id === formData.memberId)?.aliases && (members.find(m => m.id === formData.memberId)?.aliases?.length || 0) > 1 && (
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Acción / Letra</label>
+                                    <select
+                                        required
+                                        value={formData.actionAlias}
+                                        onChange={(e) => setFormData({ ...formData, actionAlias: e.target.value })}
+                                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
+                                    >
+                                        <option value="">Seleccionar Acción</option>
+                                        {members.find(m => m.id === formData.memberId)?.aliases?.map((alias, idx) => (
+                                            <option key={idx} value={alias}>{alias}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+                        </>
                     ) : (
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-1.5">Nombre del Cliente</label>
@@ -628,7 +695,9 @@ const Loans: React.FC = () => {
                 isOpen={paymentModalOpen}
                 onClose={() => {
                     setPaymentModalOpen(false);
-                    setPaymentType('principal');
+                    setPaymentPrincipalAmount(0);
+                    setPaymentInterestAmount(0);
+                    setPaymentDate(new Date().toISOString().split('T')[0]);
                     setIsEditingPayment(false);
                     setEditingPaymentId(null);
                 }}
@@ -636,49 +705,70 @@ const Loans: React.FC = () => {
             >
                 <form onSubmit={handlePaymentSubmit} className="space-y-5">
                     <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1.5">Tipo de Pago</label>
-                        <div className="grid grid-cols-2 gap-3">
-                            <button
-                                type="button"
-                                onClick={() => setPaymentType('principal')}
-                                className={`p-3 rounded-xl border-2 transition-all ${paymentType === 'principal'
-                                    ? 'border-blue-500 bg-blue-50 text-blue-700'
-                                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
-                                    }`}
-                            >
-                                <div className="font-bold text-sm">Capital</div>
-                                <div className="text-xs mt-1">Pago al monto prestado</div>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setPaymentType('interest')}
-                                className={`p-3 rounded-xl border-2 transition-all ${paymentType === 'interest'
-                                    ? 'border-purple-500 bg-purple-50 text-purple-700'
-                                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
-                                    }`}
-                            >
-                                <div className="font-bold text-sm">Interés</div>
-                                <div className="text-xs mt-1">Pago a intereses</div>
-                            </button>
-                        </div>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1.5">Monto a Abonar ($)</label>
+                        <label className="block text-sm font-medium text-slate-700 mb-1.5">Fecha del Abono</label>
                         <input
-                            type="number"
-                            required
-                            min="1"
-                            step="0.01"
-                            value={paymentAmount}
-                            onChange={(e) => setPaymentAmount(e.target.valueAsNumber)}
+                            type="date"
+                            value={paymentDate}
+                            onChange={(e) => setPaymentDate(e.target.value)}
                             className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
                         />
                     </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1.5">Capital ($)</label>
+                            <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={paymentPrincipalAmount || ''}
+                                onChange={(e) => setPaymentPrincipalAmount(e.target.value === '' ? 0 : Math.max(0, e.target.valueAsNumber))}
+                                onKeyDown={(e) => {
+                                    if (e.key === '-' || e.key === 'e' || e.key === 'E') {
+                                        e.preventDefault();
+                                    }
+                                }}
+                                placeholder="0.00"
+                                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                            />
+                            <p className="text-xs text-slate-500 mt-1">Pago al monto prestado</p>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1.5">Interés ($)</label>
+                            <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={paymentInterestAmount || ''}
+                                onChange={(e) => setPaymentInterestAmount(e.target.value === '' ? 0 : Math.max(0, e.target.valueAsNumber))}
+                                onKeyDown={(e) => {
+                                    if (e.key === '-' || e.key === 'e' || e.key === 'E') {
+                                        e.preventDefault();
+                                    }
+                                }}
+                                placeholder="0.00"
+                                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all"
+                            />
+                            <p className="text-xs text-slate-500 mt-1">Pago a intereses</p>
+                        </div>
+                    </div>
+
+                    {(paymentPrincipalAmount <= 0 && paymentInterestAmount <= 0) && (
+                        <p className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                            Debe ingresar al menos un monto (Capital o Interés)
+                        </p>
+                    )}
+
                     <div className="flex justify-end space-x-3 pt-4">
                         <Button type="button" variant="ghost" onClick={() => setPaymentModalOpen(false)}>
                             Cancelar
                         </Button>
-                        <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700">
+                        <Button
+                            type="submit"
+                            className="bg-emerald-600 hover:bg-emerald-700"
+                            disabled={paymentPrincipalAmount <= 0 && paymentInterestAmount <= 0}
+                        >
                             {isEditingPayment ? 'Guardar Cambios' : 'Registrar Pago'}
                         </Button>
                     </div>

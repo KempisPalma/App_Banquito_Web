@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useBanquito } from '../context/BanquitoContext';
 import { Users, DollarSign, TrendingUp, AlertCircle, ArrowUpRight, ArrowDownRight, Activity, Calendar } from 'lucide-react';

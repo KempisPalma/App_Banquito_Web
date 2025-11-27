@@ -36,8 +36,8 @@ interface BanquitoContextType {
     addLoan: (loan: Omit<Loan, 'id'>) => void;
     updateLoan: (id: string, data: Partial<Loan>) => void;
     deleteLoan: (id: string) => void;
-    addLoanPayment: (loanId: string, amount: number, paymentType: 'principal' | 'interest') => void;
-    updateLoanPayment: (loanId: string, paymentId: string, amount: number, paymentType: 'principal' | 'interest') => void;
+    addLoanPayment: (loanId: string, amount: number, paymentType: 'principal' | 'interest', date?: string) => void;
+    updateLoanPayment: (loanId: string, paymentId: string, amount: number, paymentType: 'principal' | 'interest', date?: string) => void;
     deleteLoanPayment: (loanId: string, paymentId: string) => void;
 }
 
@@ -434,7 +434,7 @@ export const BanquitoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setLoans(loans.filter(l => l.id !== id));
     };
 
-    const addLoanPayment = (loanId: string, amount: number, paymentType: 'principal' | 'interest') => {
+    const addLoanPayment = (loanId: string, amount: number, paymentType: 'principal' | 'interest', date?: string) => {
         setLoans(loans.map(l => {
             if (l.id === loanId) {
                 const newPayment: LoanPayment = {
@@ -442,7 +442,7 @@ export const BanquitoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                     loanId,
                     amount,
                     paymentType,
-                    date: new Date().toISOString(),
+                    date: date || new Date().toISOString(),
                 };
 
                 const updatedPayments = [...l.payments, newPayment];
@@ -464,14 +464,22 @@ export const BanquitoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }));
     };
 
-    const updateLoanPayment = (loanId: string, paymentId: string, amount: number, paymentType: 'principal' | 'interest') => {
+    const updateLoanPayment = (loanId: string, paymentId: string, amount: number, paymentType: 'principal' | 'interest', date?: string) => {
         setLoans(loans.map(l => {
             if (l.id === loanId) {
+                const updatedPayments = l.payments.map(p =>
+                    p.id === paymentId ? { ...p, amount, paymentType, date: date || p.date } : p
+                );
+
+                const totalPaid = updatedPayments.reduce((acc, curr) => acc + curr.amount, 0);
+                const interestAmount = l.amount * (l.interestRate / 100);
+                const totalDue = l.amount + interestAmount;
+                const isPaid = totalPaid >= totalDue;
+
                 return {
                     ...l,
-                    payments: l.payments.map(p =>
-                        p.id === paymentId ? { ...p, amount, paymentType } : p
-                    )
+                    payments: updatedPayments,
+                    status: isPaid ? 'paid' : 'active'
                 };
             }
             return l;
