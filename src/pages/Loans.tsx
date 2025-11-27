@@ -36,6 +36,8 @@ const Loans: React.FC = () => {
     const [paymentToDelete, setPaymentToDelete] = useState<{ loanId: string; paymentId: string; amount: number } | null>(null);
     const [deleteLoanConfirmOpen, setDeleteLoanConfirmOpen] = useState(false);
     const [loanToDelete, setLoanToDelete] = useState<{ loanId: string; borrowerName: string; amount: number } | null>(null);
+    const [deletePaymentGroupOpen, setDeletePaymentGroupOpen] = useState(false);
+    const [paymentGroupToDelete, setPaymentGroupToDelete] = useState<{ loanId: string; date: string; payments: typeof loans[0]['payments'] } | null>(null);
 
     // Auto-calculate end date (1 month)
     useEffect(() => {
@@ -198,6 +200,20 @@ const Loans: React.FC = () => {
         setPaymentModalOpen(true);
     };
 
+    const openEditPaymentGroupModal = (loanId: string, date: string, payments: typeof loans[0]['payments']) => {
+        setSelectedLoanId(loanId);
+        setPaymentDate(date);
+
+        const principalPayment = payments.find(p => p.paymentType === 'principal');
+        const interestPayment = payments.find(p => p.paymentType === 'interest');
+
+        setPaymentPrincipalAmount(principalPayment?.amount || 0);
+        setPaymentInterestAmount(interestPayment?.amount || 0);
+
+        setIsEditingPayment(false);
+        setPaymentModalOpen(true);
+    };
+
     const handleDeletePayment = (loanId: string, paymentId: string, paymentAmount: number) => {
         setPaymentToDelete({ loanId, paymentId, amount: paymentAmount });
         setDeleteConfirmOpen(true);
@@ -221,6 +237,31 @@ const Loans: React.FC = () => {
             deleteLoan(loanToDelete.loanId);
             setDeleteLoanConfirmOpen(false);
             setLoanToDelete(null);
+        }
+    };
+
+    const handleDeletePaymentGroup = (loanId: string, date: string, payments: typeof loans[0]['payments']) => {
+        setPaymentGroupToDelete({ loanId, date, payments });
+        setDeletePaymentGroupOpen(true);
+    };
+
+    const confirmDeletePaymentGroup = (deleteType: 'principal' | 'interest' | 'both') => {
+        if (paymentGroupToDelete) {
+            const { loanId, payments } = paymentGroupToDelete;
+
+            if (deleteType === 'both') {
+                payments.forEach(payment => {
+                    deleteLoanPayment(loanId, payment.id);
+                });
+            } else {
+                const paymentToRemove = payments.find(p => p.paymentType === deleteType);
+                if (paymentToRemove) {
+                    deleteLoanPayment(loanId, paymentToRemove.id);
+                }
+            }
+
+            setDeletePaymentGroupOpen(false);
+            setPaymentGroupToDelete(null);
         }
     };
 
@@ -469,42 +510,68 @@ const Loans: React.FC = () => {
                                                     exit={{ opacity: 0, height: 0 }}
                                                     className="mt-3 space-y-2 max-h-40 overflow-y-auto"
                                                 >
-                                                    {loan.payments.map((payment) => (
-                                                        <div key={payment.id} className="group/payment flex justify-between items-center text-xs bg-slate-50 hover:bg-slate-100 p-2 rounded-lg transition-colors relative">
-                                                            <div className="flex items-center gap-2">
-                                                                <span className="text-slate-500">
-                                                                    {new Date(payment.date).toLocaleDateString()}
-                                                                </span>
-                                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${payment.paymentType === 'principal'
-                                                                    ? 'bg-blue-100 text-blue-700'
-                                                                    : 'bg-purple-100 text-purple-700'
-                                                                    }`}>
-                                                                    {payment.paymentType === 'principal' ? 'Capital' : 'Interés'}
-                                                                </span>
-                                                            </div>
-                                                            <div className="flex items-center gap-2">
-                                                                <span className="font-bold text-emerald-600">
-                                                                    ${payment.amount.toFixed(2)}
-                                                                </span>
-                                                                <div className="opacity-0 group-hover/payment:opacity-100 transition-opacity flex gap-1">
-                                                                    <button
-                                                                        onClick={() => openEditPaymentModal(loan.id, payment)}
-                                                                        className="p-1 rounded hover:bg-blue-100 text-blue-600 transition-colors"
-                                                                        title="Editar pago"
-                                                                    >
-                                                                        <Edit2 size={12} />
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={() => handleDeletePayment(loan.id, payment.id, payment.amount)}
-                                                                        className="p-1 rounded hover:bg-red-100 text-red-600 transition-colors"
-                                                                        title="Eliminar pago"
-                                                                    >
-                                                                        <Trash2 size={12} />
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    ))}
+                                                    {(() => {
+                                                        // Group payments by date
+                                                        const paymentsByDate: { [date: string]: typeof loan.payments } = {};
+                                                        loan.payments.forEach(payment => {
+                                                            const dateKey = payment.date.split('T')[0];
+                                                            if (!paymentsByDate[dateKey]) {
+                                                                paymentsByDate[dateKey] = [];
+                                                            }
+                                                            paymentsByDate[dateKey].push(payment);
+                                                        });
+
+                                                        return Object.entries(paymentsByDate)
+                                                            .sort(([dateA], [dateB]) => new Date(dateB).getTime() - new Date(dateA).getTime())
+                                                            .map(([date, payments]) => {
+                                                                const principalPayment = payments.find(p => p.paymentType === 'principal');
+                                                                const interestPayment = payments.find(p => p.paymentType === 'interest');
+                                                                const totalAmount = payments.reduce((sum, p) => sum + p.amount, 0);
+
+                                                                return (
+                                                                    <div key={date} className="group/payment flex justify-between items-center text-xs bg-slate-50 hover:bg-slate-100 p-2 rounded-lg transition-colors relative">
+                                                                        <div className="flex items-center gap-2 flex-1">
+                                                                            <span className="text-slate-500 min-w-[70px]">
+                                                                                {new Date(date + 'T00:00:00').toLocaleDateString()}
+                                                                            </span>
+                                                                            <div className="flex gap-1 flex-wrap">
+                                                                                {principalPayment && (
+                                                                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 whitespace-nowrap">
+                                                                                        Cap: ${principalPayment.amount.toFixed(2)}
+                                                                                    </span>
+                                                                                )}
+                                                                                {interestPayment && (
+                                                                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 whitespace-nowrap">
+                                                                                        Int: ${interestPayment.amount.toFixed(2)}
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="font-bold text-emerald-600 min-w-[60px] text-right">
+                                                                                ${totalAmount.toFixed(2)}
+                                                                            </span>
+                                                                            <div className="opacity-0 group-hover/payment:opacity-100 transition-opacity flex gap-1">
+                                                                                <button
+                                                                                    onClick={() => openEditPaymentGroupModal(loan.id, date, payments)}
+                                                                                    className="p-1 rounded hover:bg-blue-100 text-blue-600 transition-colors"
+                                                                                    title="Editar abono"
+                                                                                >
+                                                                                    <Edit2 size={12} />
+                                                                                </button>
+                                                                                <button
+                                                                                    onClick={() => handleDeletePaymentGroup(loan.id, date, payments)}
+                                                                                    className="p-1 rounded hover:bg-red-100 text-red-600 transition-colors"
+                                                                                    title="Eliminar abono"
+                                                                                >
+                                                                                    <Trash2 size={12} />
+                                                                                </button>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            });
+                                                    })()}
                                                 </motion.div>
                                             )}
                                         </div>
@@ -860,6 +927,83 @@ const Loans: React.FC = () => {
                             className="flex-1 bg-red-600 hover:bg-red-700"
                         >
                             Sí, Eliminar
+                        </Button>
+                    </div>
+                </div>
+            </Modal>
+
+            {/* Delete Payment Group Selection Modal */}
+            <Modal
+                isOpen={deletePaymentGroupOpen}
+                onClose={() => {
+                    setDeletePaymentGroupOpen(false);
+                    setPaymentGroupToDelete(null);
+                }}
+                title=""
+            >
+                <div className="text-center py-4">
+                    <div className="mx-auto w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mb-4">
+                        <AlertTriangle className="text-red-600" size={32} />
+                    </div>
+                    <h3 className="text-xl font-bold text-slate-900 mb-2">¿Qué deseas eliminar?</h3>
+                    <p className="text-slate-600 mb-4">Selecciona el tipo de pago a eliminar</p>
+                    {paymentGroupToDelete && (
+                        <div className="mt-4 p-4 bg-slate-50 rounded-xl">
+                            <p className="text-sm text-slate-500 mb-2">Fecha del abono</p>
+                            <p className="text-lg font-bold text-slate-900 mb-3">
+                                {new Date(paymentGroupToDelete.date + 'T00:00:00').toLocaleDateString()}
+                            </p>
+                            <div className="flex gap-2 justify-center">
+                                {paymentGroupToDelete.payments.find(p => p.paymentType === 'principal') && (
+                                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700">
+                                        Cap: ${paymentGroupToDelete.payments.find(p => p.paymentType === 'principal')?.amount.toFixed(2)}
+                                    </span>
+                                )}
+                                {paymentGroupToDelete.payments.find(p => p.paymentType === 'interest') && (
+                                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-700">
+                                        Int: ${paymentGroupToDelete.payments.find(p => p.paymentType === 'interest')?.amount.toFixed(2)}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                    <div className="flex flex-col gap-2 mt-6">
+                        {paymentGroupToDelete?.payments.find(p => p.paymentType === 'principal') && (
+                            <Button
+                                type="button"
+                                onClick={() => confirmDeletePaymentGroup('principal')}
+                                className="bg-blue-600 hover:bg-blue-700"
+                            >
+                                Eliminar solo Capital
+                            </Button>
+                        )}
+                        {paymentGroupToDelete?.payments.find(p => p.paymentType === 'interest') && (
+                            <Button
+                                type="button"
+                                onClick={() => confirmDeletePaymentGroup('interest')}
+                                className="bg-purple-600 hover:bg-purple-700"
+                            >
+                                Eliminar solo Interés
+                            </Button>
+                        )}
+                        {paymentGroupToDelete?.payments.length === 2 && (
+                            <Button
+                                type="button"
+                                onClick={() => confirmDeletePaymentGroup('both')}
+                                className="bg-red-600 hover:bg-red-700"
+                            >
+                                Eliminar Ambos
+                            </Button>
+                        )}
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            onClick={() => {
+                                setDeletePaymentGroupOpen(false);
+                                setPaymentGroupToDelete(null);
+                            }}
+                        >
+                            Cancelar
                         </Button>
                     </div>
                 </div>
