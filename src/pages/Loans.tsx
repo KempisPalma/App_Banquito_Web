@@ -378,7 +378,7 @@ const Loans: React.FC = () => {
                 </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
                 {loans.filter(loan => {
                     // Filter by loan status
                     if (loanFilter === 'all') return true;
@@ -420,27 +420,28 @@ const Loans: React.FC = () => {
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: index * 0.1 }}
+                            className="h-full"
                         >
-                            <Card className="h-full flex flex-col border-none shadow-xl shadow-slate-200/50 overflow-hidden group" padding="none">
-                                <div className="p-6 flex-1">
-                                    <div className="flex justify-between items-start mb-6">
+                            <Card className="h-full flex flex-col border-none shadow-lg shadow-slate-200/40 hover:shadow-xl hover:shadow-slate-300/50 transition-all duration-300 overflow-hidden group rounded-2xl" padding="none">
+                                <div className="p-4 flex-1">
+                                    <div className="flex justify-between items-start mb-3">
                                         <div>
-                                            <div className="flex items-center space-x-2">
-                                                <h3 className="font-bold text-xl text-slate-800">{borrowerName}</h3>
+                                            <div className="flex items-center space-x-1.5">
+                                                <h3 className="font-bold text-base text-slate-800">{borrowerName}</h3>
                                             </div>
                                             {loan.actionAlias && (
-                                                <p className="text-sm text-indigo-600 font-bold mt-0.5">
+                                                <p className="text-xs text-indigo-600 font-bold mt-0.5">
                                                     {loan.actionAlias}
                                                 </p>
                                             )}
-                                            <div className="flex flex-col mt-2 space-y-1">
-                                                <p className={`text-xs flex items-center font-medium ${isOverdue ? 'text-red-500' : 'text-slate-500'}`}>
-                                                    <Clock size={12} className="mr-1.5" />
+                                            <div className="flex flex-col mt-1 space-y-0.5">
+                                                <p className={`text-[10px] flex items-center font-medium ${isOverdue ? 'text-red-500' : 'text-slate-500'}`}>
+                                                    <Clock size={10} className="mr-1" />
                                                     Vence: {new Date(loan.endDate).toLocaleDateString()}
                                                 </p>
                                             </div>
                                         </div>
-                                        <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide flex items-center ${loan.status === 'paid' ? 'bg-emerald-100 text-emerald-700' :
+                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide flex items-center ${loan.status === 'paid' ? 'bg-emerald-100 text-emerald-700' :
                                             isOverdue ? 'bg-red-100 text-red-700' :
                                                 'bg-orange-100 text-orange-700'
                                             }`}>
@@ -448,39 +449,39 @@ const Loans: React.FC = () => {
                                         </span>
                                     </div>
 
-                                    <div className="space-y-4 mb-6">
-                                        <div className="flex justify-between text-sm items-center p-3 rounded-xl bg-slate-50">
+                                    <div className="space-y-2 mb-3">
+                                        <div className="flex justify-between text-xs items-center p-2 rounded-lg bg-slate-50">
                                             <span className="text-slate-500 font-medium">Monto Prestado</span>
-                                            <span className="font-bold text-slate-900 text-lg">${calculations.principal.toFixed(2)}</span>
+                                            <span className="font-bold text-slate-900 text-sm">${calculations.principal.toFixed(2)}</span>
                                         </div>
-                                        <div className="flex justify-between text-sm items-center px-2">
+                                        <div className="flex justify-between text-xs items-center px-1.5">
                                             <span className="text-slate-500 flex items-center">
-                                                <TrendingUp size={14} className="mr-1.5" />
+                                                <TrendingUp size={11} className="mr-1" />
                                                 Interés Base ({loan.interestRate}%)
                                             </span>
-                                            <span className="font-bold text-orange-600">+${calculations.baseInterest.toFixed(2)}</span>
+                                            <span className="font-bold text-orange-600 text-xs">+${calculations.baseInterest.toFixed(2)}</span>
                                         </div>
                                         {isOverdue && calculations.overdueInterest > 0 && (
-                                            <div className="flex justify-between text-sm items-center px-2">
+                                            <div className="flex justify-between text-xs items-center px-1.5">
                                                 <span className="text-red-500 flex items-center font-medium">
-                                                    <TrendingUp size={14} className="mr-1.5" />
+                                                    <TrendingUp size={11} className="mr-1" />
                                                     Interés Mora ({calculations.monthsOverdue} {calculations.monthsOverdue === 1 ? 'mes' : 'meses'})
                                                 </span>
-                                                <span className="font-bold text-red-600">+${calculations.overdueInterest.toFixed(2)}</span>
+                                                <span className="font-bold text-red-600 text-xs">+${calculations.overdueInterest.toFixed(2)}</span>
                                             </div>
                                         )}
-                                        <div className="pt-3 border-t border-slate-100 flex justify-between items-end">
-                                            <span className="text-sm text-slate-500 font-medium">Total a Pagar</span>
-                                            <span className="text-2xl font-bold text-slate-900">${calculations.totalDue.toFixed(2)}</span>
+                                        <div className="pt-2 border-t border-slate-100 flex justify-between items-end">
+                                            <span className="text-xs text-slate-500 font-medium">Total a Pagar</span>
+                                            <span className="text-lg font-bold text-slate-900">${calculations.totalDue.toFixed(2)}</span>
                                         </div>
                                     </div>
 
-                                    <div className="space-y-2">
-                                        <div className="flex justify-between text-xs font-medium text-slate-500">
+                                    <div className="space-y-1.5">
+                                        <div className="flex justify-between text-[10px] font-medium text-slate-500">
                                             <span>Pagado: <span className="text-emerald-600">${calculations.totalPaid.toFixed(2)}</span></span>
                                             <span>Restante: <span className="text-orange-600">${calculations.remaining.toFixed(2)}</span></span>
                                         </div>
-                                        <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                                        <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
                                             <motion.div
                                                 className="bg-gradient-to-r from-emerald-500 to-emerald-400 h-full rounded-full"
                                                 initial={{ width: 0 }}
@@ -492,23 +493,23 @@ const Loans: React.FC = () => {
 
                                     {/* Payment History */}
                                     {loan.payments.length > 0 && (
-                                        <div className="mt-4 pt-4 border-t border-slate-100">
+                                        <div className="mt-2 pt-2 border-t border-slate-100">
                                             <button
                                                 onClick={toggleExpanded}
-                                                className="flex items-center justify-between w-full text-sm font-medium text-slate-700 hover:text-slate-900 transition-colors"
+                                                className="flex items-center justify-between w-full text-xs font-medium text-slate-700 hover:text-slate-900 transition-colors"
                                             >
                                                 <span className="flex items-center">
-                                                    <DollarSign size={14} className="mr-1.5" />
+                                                    <DollarSign size={11} className="mr-1" />
                                                     Historial de Pagos ({loan.payments.length})
                                                 </span>
-                                                {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                                {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                                             </button>
                                             {isExpanded && (
                                                 <motion.div
                                                     initial={{ opacity: 0, height: 0 }}
                                                     animate={{ opacity: 1, height: 'auto' }}
                                                     exit={{ opacity: 0, height: 0 }}
-                                                    className="mt-3 space-y-2 max-h-40 overflow-y-auto"
+                                                    className="mt-2 space-y-1.5 max-h-32 overflow-y-auto"
                                                 >
                                                     {(() => {
                                                         // Group payments by date
@@ -578,24 +579,24 @@ const Loans: React.FC = () => {
                                     )}
                                 </div>
 
-                                <div className="bg-white border-t border-slate-100 px-6 py-3">
+                                <div className="bg-white border-t border-slate-100 px-4 py-3 mt-auto">
                                     <div className="flex items-center justify-end gap-2">
                                         {currentUser?.role !== 'socio' && (
                                             <>
                                                 <button
                                                     onClick={() => openEditModal(loan)}
-                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 hover:border-blue-300 transition-all hover:shadow-sm"
+                                                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 hover:border-blue-300 transition-all hover:shadow-sm"
                                                     title="Editar préstamo"
                                                 >
-                                                    <Edit2 size={14} />
+                                                    <Edit2 size={13} />
                                                     <span>Editar</span>
                                                 </button>
                                                 <button
                                                     onClick={() => handleDeleteLoan(loan.id, borrowerName || '', loan.amount)}
-                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 hover:border-red-300 transition-all hover:shadow-sm"
+                                                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 hover:border-red-300 transition-all hover:shadow-sm"
                                                     title="Eliminar préstamo"
                                                 >
-                                                    <Trash2 size={14} />
+                                                    <Trash2 size={13} />
                                                     <span>Eliminar</span>
                                                 </button>
                                             </>
@@ -603,10 +604,10 @@ const Loans: React.FC = () => {
                                         <button
                                             onClick={() => openPaymentModal(loan.id)}
                                             disabled={loan.status === 'paid'}
-                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 hover:border-emerald-300 transition-all hover:shadow-sm disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-emerald-50"
+                                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 hover:border-emerald-300 transition-all hover:shadow-sm disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-emerald-50"
                                             title="Registrar abono"
                                         >
-                                            <DollarSign size={14} />
+                                            <DollarSign size={13} />
                                             <span>Abonar</span>
                                         </button>
                                     </div>

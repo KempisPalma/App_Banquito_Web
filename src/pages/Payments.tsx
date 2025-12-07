@@ -3,7 +3,7 @@ import { useBanquito } from '../context/BanquitoContext';
 import { Card } from '../components/ui/Card';
 import { motion } from 'framer-motion';
 import { clsx } from 'clsx';
-import { Calendar, TrendingUp } from 'lucide-react';
+import { Calendar, TrendingUp, Users, User, ArrowLeft } from 'lucide-react';
 
 // Type for each row in the payment table
 type PaymentRow = {
@@ -16,7 +16,7 @@ type PaymentRow = {
 const Payments: React.FC = () => {
     const { members, weeklyPayments, monthlyFees, recordWeeklyPayment, recordMonthlyFee, currentUser } = useBanquito();
 
-    // Initialize from localStorage for all users, each user has their own saved preference
+    // Initialize from localStorage - TRUST THE STORED VALUE INITIALLY
     const getInitialMonth = () => {
         if (currentUser?.id) {
             const saved = localStorage.getItem(`payments_selected_month_${currentUser.id}`);
@@ -33,39 +33,98 @@ const Payments: React.FC = () => {
         return new Date().getFullYear();
     };
 
+    const getInitialMemberId = () => {
+        if (currentUser?.id) {
+            const saved = localStorage.getItem(`payments_selected_member_${currentUser.id}`);
+            return saved || '';
+        }
+        return '';
+    };
+
+    const getInitialActionAlias = () => {
+        if (currentUser?.id) {
+            const saved = localStorage.getItem(`payments_selected_action_${currentUser.id}`);
+            return saved || '';
+        }
+        return '';
+    };
+
+    const getInitialViewMode = (): 'all' | 'individual' => {
+        if (currentUser?.id) {
+            const saved = localStorage.getItem(`payments_view_mode_${currentUser.id}`);
+            return (saved === 'individual' ? 'individual' : 'all');
+        }
+        return 'all';
+    };
+
+    // State
+    const [viewMode, setViewMode] = useState<'all' | 'individual'>(getInitialViewMode);
+    const [selectedMemberId, setSelectedMemberId] = useState<string>(getInitialMemberId);
+    const [selectedActionAlias, setSelectedActionAlias] = useState<string>(getInitialActionAlias);
     const [selectedMonth, setSelectedMonth] = useState(getInitialMonth);
     const [selectedYear, setSelectedYear] = useState(getInitialYear);
 
-    // Save to localStorage for all users whenever month or year changes
+    // Persist state
     useEffect(() => {
         if (currentUser?.id) {
             localStorage.setItem(`payments_selected_month_${currentUser.id}`, selectedMonth.toString());
             localStorage.setItem(`payments_selected_year_${currentUser.id}`, selectedYear.toString());
+            // Only overwrite if we have a value or if we are sure we want to clear it (e.g. explicit clear).
+            // But for now, let's just save whatever is in state.
+            // The issue before was that state initialized to empty because of the validation check.
+            // Now state initializes to the saved value, so we are safe to save it back.
+            localStorage.setItem(`payments_selected_member_${currentUser.id}`, selectedMemberId);
+            localStorage.setItem(`payments_selected_action_${currentUser.id}`, selectedActionAlias);
+            localStorage.setItem(`payments_view_mode_${currentUser.id}`, viewMode);
         }
-    }, [selectedMonth, selectedYear, currentUser]);
+    }, [selectedMonth, selectedYear, selectedMemberId, selectedActionAlias, viewMode, currentUser]);
 
     const months = [
         'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
         'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
     ];
 
-    // Generate payment rows - one row per action (or one row if no actions)
-    // Filter by current user if they are a 'socio'
-    const filteredMembers = currentUser?.role === 'socio' && currentUser.memberId
+    // Colors for months - Softer/Pastel palette with border colors included
+    const monthClasses = [
+        "bg-slate-50 text-slate-700 border-slate-300",         // Enero
+        "bg-pink-50 text-pink-700 border-pink-200",           // Febrero
+        "bg-violet-50 text-violet-700 border-violet-200",     // Marzo
+        "bg-indigo-50 text-indigo-700 border-indigo-200",     // Abril
+        "bg-cyan-50 text-cyan-700 border-cyan-200",           // Mayo
+        "bg-teal-50 text-teal-700 border-teal-200",           // Junio
+        "bg-emerald-50 text-emerald-700 border-emerald-200",   // Julio
+        "bg-lime-50 text-lime-700 border-lime-200",           // Agosto
+        "bg-amber-50 text-amber-700 border-amber-200",         // Septiembre
+        "bg-orange-50 text-orange-700 border-orange-200",     // Octubre
+        "bg-red-50 text-red-700 border-red-200",               // Noviembre
+        "bg-rose-50 text-rose-700 border-rose-200"              // Diciembre
+    ];
+
+    // Filter Logic
+    const isSocio = currentUser?.role === 'socio';
+
+    let filteredMembers = isSocio && currentUser.memberId
         ? members.filter(m => m.id === currentUser.memberId)
         : members;
 
+    if (viewMode === 'individual' && selectedMemberId && !isSocio) {
+        filteredMembers = members.filter(m => m.id === selectedMemberId);
+    }
+
+    // Generate rows
     const paymentRows: PaymentRow[] = filteredMembers.flatMap(member => {
         if (member.aliases && member.aliases.length > 0) {
-            // Create a row for each action
-            return member.aliases.map(alias => ({
+            let aliasesToShow = member.aliases;
+            if (viewMode === 'individual' && selectedActionAlias && !isSocio) {
+                aliasesToShow = member.aliases.filter(alias => alias === selectedActionAlias);
+            }
+            return aliasesToShow.map(alias => ({
                 memberId: member.id,
                 memberName: member.name,
                 actionAlias: alias,
                 displayName: `${member.name} / ${alias}`
             }));
         } else {
-            // Single row for member without actions
             return [{
                 memberId: member.id,
                 memberName: member.name,
@@ -75,71 +134,67 @@ const Payments: React.FC = () => {
         }
     });
 
-    // Helper to get payment amount safely
-    const getWeeklyAmount = (memberId: string, week: number, actionAlias?: string) => {
+    // Helpers
+    const getWeeklyAmount = (memberId: string, year: number, month: number, week: number, actionAlias?: string) => {
         const payment = weeklyPayments.find(p =>
             p.memberId === memberId &&
-            p.year === selectedYear &&
-            p.month === selectedMonth &&
+            p.year === year &&
+            p.month === month &&
             p.week === week &&
             p.actionAlias === actionAlias
         );
         return payment ? payment.amount : 0;
     };
 
-    const getMonthlyFeeAmount = (memberId: string, actionAlias?: string) => {
+    const getMonthlyFeeAmount = (memberId: string, year: number, month: number, actionAlias?: string) => {
         const fee = monthlyFees.find(f =>
             f.memberId === memberId &&
-            f.year === selectedYear &&
-            f.month === selectedMonth &&
+            f.year === year &&
+            f.month === month &&
             f.actionAlias === actionAlias
         );
         return fee ? fee.amount : 0;
     };
 
-    const handleWeeklyChange = (memberId: string, week: number, value: string, actionAlias?: string) => {
-        // Prevent editing if user is socio
-        if (currentUser?.role === 'socio') return;
-
+    const handleWeeklyChange = (memberId: string, year: number, month: number, week: number, value: string, actionAlias?: string) => {
+        if (isSocio) return;
         if (value === '') {
-            recordWeeklyPayment(memberId, selectedYear, selectedMonth, week, 0, actionAlias);
+            recordWeeklyPayment(memberId, year, month, week, 0, actionAlias);
             return;
         }
         const amount = parseFloat(value);
         if (!isNaN(amount)) {
-            recordWeeklyPayment(memberId, selectedYear, selectedMonth, week, amount, actionAlias);
+            recordWeeklyPayment(memberId, year, month, week, amount, actionAlias);
         }
     };
 
-    const handleMonthlyFeeChange = (memberId: string, value: string, actionAlias?: string) => {
-        // Prevent editing if user is socio
-        if (currentUser?.role === 'socio') return;
-
+    const handleMonthlyFeeChange = (memberId: string, year: number, month: number, value: string, actionAlias?: string) => {
+        if (isSocio) return;
         if (value === '') {
-            recordMonthlyFee(memberId, selectedYear, selectedMonth, 0, actionAlias);
+            recordMonthlyFee(memberId, year, month, 0, actionAlias);
             return;
         }
         const amount = parseFloat(value);
         if (!isNaN(amount)) {
-            recordMonthlyFee(memberId, selectedYear, selectedMonth, amount, actionAlias);
+            recordMonthlyFee(memberId, year, month, amount, actionAlias);
         }
     };
 
-    // Keyboard Navigation Handler
-    const handleKeyDown = (e: React.KeyboardEvent, rowIndex: number, colIndex: number) => {
-        if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Enter') {
+    // Keyboard Interaction
+    const handleKeyDown = (e: React.KeyboardEvent, rowIndex: number, colIndex: number, maxRows: number) => {
+        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key)) {
             e.preventDefault();
             let nextRow = rowIndex;
             let nextCol = colIndex;
 
             if (e.key === 'ArrowUp') nextRow = Math.max(0, rowIndex - 1);
-            if (e.key === 'ArrowDown') nextRow = Math.min(paymentRows.length - 1, rowIndex + 1);
+            if (e.key === 'ArrowDown') nextRow = Math.min(maxRows - 1, rowIndex + 1);
             if (e.key === 'ArrowLeft') nextCol = Math.max(0, colIndex - 1);
             if (e.key === 'ArrowRight' || e.key === 'Enter') {
-                if (colIndex === 5) { // Last column (Monthly Fee)
-                    if (rowIndex < paymentRows.length - 1) {
+                if (colIndex === 5) { // Last col
+                    if (rowIndex < maxRows - 1) {
                         nextRow++;
-                        nextCol = 0; // First week of next row
+                        nextCol = 0;
                     }
                 } else {
                     nextCol++;
@@ -154,234 +209,191 @@ const Payments: React.FC = () => {
         }
     };
 
-    // Calculate totals
-    const getRowTotal = (row: PaymentRow) => {
-        let total = 0;
-        for (let i = 1; i <= 5; i++) {
-            total += getWeeklyAmount(row.memberId, i, row.actionAlias);
-        }
-        return total;
-    };
 
+    // Totals Calculations
     const getWeekTotal = (week: number) => {
-        return paymentRows.reduce((acc, row) => acc + getWeeklyAmount(row.memberId, week, row.actionAlias), 0);
+        return paymentRows.reduce((acc, row) => acc + getWeeklyAmount(row.memberId, selectedYear, selectedMonth, week, row.actionAlias), 0);
     };
 
     const getMonthlyFeeTotal = () => {
-        return paymentRows.reduce((acc, row) => acc + getMonthlyFeeAmount(row.memberId, row.actionAlias), 0);
+        return paymentRows.reduce((acc, row) => acc + getMonthlyFeeAmount(row.memberId, selectedYear, selectedMonth, row.actionAlias), 0);
     };
 
     const getGrandTotal = () => {
         let total = 0;
         paymentRows.forEach(row => {
-            total += getRowTotal(row);
-            total += getMonthlyFeeAmount(row.memberId, row.actionAlias);
+            for (let w = 1; w <= 5; w++) total += getWeeklyAmount(row.memberId, selectedYear, selectedMonth, w, row.actionAlias);
+            total += getMonthlyFeeAmount(row.memberId, selectedYear, selectedMonth, row.actionAlias);
         });
         return total;
     };
 
+    // Render Logic
+    // Only show placeholder if we have confirmed members list AND specific member is missing
+    const showPlaceholder = viewMode === 'individual' && !isSocio && (!selectedMemberId || (members.length > 0 && !members.some(m => m.id === selectedMemberId)));
+    const showAnnualView = isSocio || (viewMode === 'individual' && !showPlaceholder);
+    const showMonthlyView = !isSocio && viewMode === 'all';
+
     return (
-        <div className="space-y-8">
-            <div className="sticky top-0 z-20 bg-gradient-to-b from-slate-50 via-slate-50 to-slate-50/95 backdrop-blur-md flex flex-col md:flex-row justify-between items-start md:items-end gap-6 pb-6 pt-4">
-                <div>
-                    <h1 className="text-4xl font-bold text-slate-800 tracking-tight">
-                        {currentUser?.role === 'socio' ? 'Mis Pagos' : 'Pagos Semanales'}
-                    </h1>
-                    <p className="text-slate-500 mt-2 text-lg">
-                        {currentUser?.role === 'socio'
-                            ? 'Consulta tu historial de pagos del año.'
-                            : 'Gestiona los pagos semanales y cuotas mensuales de cada acción.'}
-                    </p>
-                </div>
+        <div className="space-y-6">
+            <div className="sticky top-0 z-20 bg-gradient-to-b from-slate-50 via-slate-50 to-slate-50/95 backdrop-blur-md pb-4 pt-3">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+                    <div>
+                        <h1 className="text-2xl font-bold text-slate-800 tracking-tight">
+                            {isSocio ? 'Mis Pagos' : 'Pagos Semanales'}
+                        </h1>
+                        <p className="text-slate-500 mt-1 text-sm">
+                            {isSocio
+                                ? 'Consulta tu historial de pagos del año.'
+                                : 'Gestiona los pagos semanales y cuotas mensuales de cada acción.'}
+                        </p>
+                    </div>
 
-                <div className="flex gap-4 items-center bg-white/80 backdrop-blur-sm p-2 rounded-2xl shadow-sm border border-slate-200/60">
-                    {/* Solo mostrar selector de mes para administradores */}
-                    {currentUser?.role !== 'socio' && (
-                        <>
-                            <div className="relative group">
-                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                    <Calendar className="h-4 w-4 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                    <div className="flex gap-3 items-center bg-white/80 backdrop-blur-sm p-1.5 rounded-xl shadow-sm border border-slate-200/60">
+                        {/* Month Selector: Only for Admin in 'All' view */}
+                        {showMonthlyView && (
+                            <>
+                                <div className="relative group">
+                                    <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                                        <Calendar className="h-3.5 w-3.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                                    </div>
+                                    <select
+                                        value={selectedMonth}
+                                        onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                                        className="pl-8 pr-6 py-2 bg-transparent border-none rounded-lg focus:ring-2 focus:ring-indigo-500/20 text-slate-700 text-sm font-semibold cursor-pointer hover:bg-slate-50 transition-colors appearance-none"
+                                    >
+                                        {months.map((month, index) => (
+                                            <option key={index} value={index}>{month}</option>
+                                        ))}
+                                    </select>
                                 </div>
-                                <select
-                                    value={selectedMonth}
-                                    onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                                    className="pl-10 pr-8 py-2.5 bg-transparent border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-slate-700 font-semibold cursor-pointer hover:bg-slate-50 transition-colors appearance-none"
-                                >
-                                    {months.map((month, index) => (
-                                        <option key={index} value={index}>{month}</option>
-                                    ))}
-                                </select>
-                            </div>
+                                <div className="w-px h-6 bg-slate-200" />
+                            </>
+                        )}
 
-                            <div className="w-px h-8 bg-slate-200" />
-                        </>
-                    )}
-
-                    <select
-                        value={selectedYear}
-                        onChange={(e) => setSelectedYear(Number(e.target.value))}
-                        className="px-4 py-2.5 bg-transparent border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-slate-700 font-semibold cursor-pointer hover:bg-slate-50 transition-colors appearance-none"
-                    >
-                        {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(year => (
-                            <option key={year} value={year}>{year}</option>
-                        ))}
-                    </select>
+                        <select
+                            value={selectedYear}
+                            onChange={(e) => setSelectedYear(Number(e.target.value))}
+                            className="px-3 py-2 bg-transparent border-none rounded-lg focus:ring-2 focus:ring-indigo-500/20 text-slate-700 text-sm font-semibold cursor-pointer hover:bg-slate-50 transition-colors appearance-none"
+                        >
+                            {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(year => (
+                                <option key={year} value={year}>{year}</option>
+                            ))}
+                        </select>
+                    </div>
                 </div>
+
+                {/* View Switcher for Admins */}
+                {!isSocio && (
+                    <div className="mt-4 flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+                        <div className="flex items-center gap-3 bg-white/80 backdrop-blur-sm p-1 rounded-xl shadow-sm border border-slate-200/60">
+                            <button
+                                onClick={() => setViewMode('all')}
+                                className={clsx(
+                                    "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all",
+                                    viewMode === 'all'
+                                        ? "bg-indigo-500 text-white shadow-md"
+                                        : "text-slate-600 hover:bg-slate-100"
+                                )}
+                            >
+                                <Users size={16} />
+                                <span>Todos los Socios</span>
+                            </button>
+                            <button
+                                onClick={() => setViewMode('individual')}
+                                className={clsx(
+                                    "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all",
+                                    viewMode === 'individual'
+                                        ? "bg-indigo-500 text-white shadow-md"
+                                        : "text-slate-600 hover:bg-slate-100"
+                                )}
+                            >
+                                <User size={16} />
+                                <span>Socio Individual</span>
+                            </button>
+                        </div>
+
+                        {viewMode === 'individual' && (
+                            <select
+                                value={`${selectedMemberId}|${selectedActionAlias}`}
+                                onChange={(e) => {
+                                    const [memberId, actionAlias] = e.target.value.split('|');
+                                    setSelectedMemberId(memberId);
+                                    setSelectedActionAlias(actionAlias === 'undefined' ? '' : actionAlias);
+                                }}
+                                className="px-4 py-2 bg-white/80 backdrop-blur-sm rounded-xl shadow-sm border border-slate-200/60 text-slate-700 text-sm font-medium cursor-pointer hover:bg-white transition-colors"
+                            >
+                                <option value="">Seleccionar Socio...</option>
+                                {members.flatMap(member => {
+                                    if (member.aliases && member.aliases.length > 0) {
+                                        return member.aliases.map(alias => (
+                                            <option key={`${member.id}-${alias}`} value={`${member.id}|${alias}`}>
+                                                {member.name} - {alias}
+                                            </option>
+                                        ));
+                                    } else {
+                                        return (
+                                            <option key={member.id} value={`${member.id}|`}>
+                                                {member.name}
+                                            </option>
+                                        );
+                                    }
+                                })}
+                            </select>
+                        )}
+                    </div>
+                )}
             </div>
 
-            {/* Vista condicional según rol de usuario */}
-            {currentUser?.role === 'socio' ? (
-                /* ========== VISTA ANUAL PARA SOCIOS ========== */
+            {/* Content Area */}
+            {showPlaceholder && (
+                <Card className="p-12">
+                    <div className="text-center">
+                        <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center">
+                            <User size={40} className="text-indigo-600" />
+                        </div>
+                        <h3 className="text-xl font-bold text-slate-800 mb-2">
+                            Selecciona un Socio
+                        </h3>
+                        <p className="text-slate-500">
+                            Elige un socio del menú desplegable para ver y registrar sus pagos del año.
+                        </p>
+                    </div>
+                </Card>
+            )}
+
+            {showAnnualView && (
                 <>
-                    {/* Tarjetas de Estadísticas del Año */}
-                    {(() => {
-                        const row = paymentRows[0]; // Solo hay una fila para el socio
-                        if (!row) return null;
-
-                        let weeksPaid = 0;
-                        let weeksPending = 0;
-                        let totalWeekly = 0;
-                        let totalMonthlyFees = 0;
-
-                        // Calcular estadísticas del año completo
-                        for (let month = 0; month < 12; month++) {
-                            for (let week = 1; week <= 5; week++) {
-                                const payment = weeklyPayments.find(p =>
-                                    p.memberId === row.memberId &&
-                                    p.year === selectedYear &&
-                                    p.month === month &&
-                                    p.week === week &&
-                                    p.actionAlias === row.actionAlias
-                                );
-                                const amount = payment ? payment.amount : 0;
-
-                                if (amount === 7) weeksPaid++;
-                                else if (amount === 0) weeksPending++;
-                                totalWeekly += amount;
-                            }
-
-                            const fee = monthlyFees.find(f =>
-                                f.memberId === row.memberId &&
-                                f.year === selectedYear &&
-                                f.month === month &&
-                                f.actionAlias === row.actionAlias
-                            );
-                            totalMonthlyFees += fee ? fee.amount : 0;
-                        }
-
-                        const totalWeeks = 60; // 12 meses * 5 semanas
-                        const progressPercent = (weeksPaid / totalWeeks) * 100;
-
-                        return (
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-                                {/* Semanas Pagadas */}
-                                <motion.div
-                                    initial={{ opacity: 0, y: 20 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    className="bg-gradient-to-br from-indigo-50 to-indigo-100/50 rounded-2xl p-6 border border-indigo-200/50 shadow-lg"
-                                >
-                                    <div className="text-sm font-semibold text-indigo-600 uppercase tracking-wider mb-2">
-                                        📊 Semanas Pagadas
-                                    </div>
-                                    <div className="text-4xl font-black text-indigo-900 mb-2">
-                                        {weeksPaid} / {totalWeeks}
-                                    </div>
-                                    <div className="w-full bg-indigo-200/30 rounded-full h-3 mb-2">
-                                        <div
-                                            className="bg-gradient-to-r from-indigo-500 to-indigo-600 h-3 rounded-full transition-all duration-500"
-                                            style={{ width: `${progressPercent}%` }}
-                                        />
-                                    </div>
-                                    <div className="text-xs text-indigo-700 font-medium">
-                                        {weeksPending} semanas pendientes
-                                    </div>
-                                </motion.div>
-
-                                {/* Total Acumulado */}
-                                <motion.div
-                                    initial={{ opacity: 0, y: 20 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{ delay: 0.1 }}
-                                    className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 rounded-2xl p-6 border border-emerald-200/50 shadow-lg"
-                                >
-                                    <div className="text-sm font-semibold text-emerald-600 uppercase tracking-wider mb-2">
-                                        💰 Total Acumulado
-                                    </div>
-                                    <div className="text-4xl font-black text-emerald-900">
-                                        ${totalWeekly.toFixed(2)}
-                                    </div>
-                                    <div className="text-xs text-emerald-700 font-medium mt-2">
-                                        Pagos semanales del año
-                                    </div>
-                                </motion.div>
-
-                                {/* Total Rifas */}
-                                <motion.div
-                                    initial={{ opacity: 0, y: 20 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{ delay: 0.2 }}
-                                    className="bg-gradient-to-br from-purple-50 to-purple-100/50 rounded-2xl p-6 border border-purple-200/50 shadow-lg"
-                                >
-                                    <div className="text-sm font-semibold text-purple-600 uppercase tracking-wider mb-2">
-                                        🎫 Rifas Mensuales
-                                    </div>
-                                    <div className="text-4xl font-black text-purple-900">
-                                        ${totalMonthlyFees.toFixed(2)}
-                                    </div>
-                                    <div className="text-xs text-purple-700 font-medium mt-2">
-                                        Total del año
-                                    </div>
-                                </motion.div>
-                            </div>
-                        );
-                    })()}
-
-                    {/* Tabla de 12 Meses */}
-                    <Card className="overflow-hidden border-none shadow-xl shadow-slate-200/40 bg-white/50 backdrop-blur-xl rounded-3xl" padding="none">
+                    {/* Annual View (12 Months) - Used for Socio AND Admin Individual Mode */}
+                    <div className="bg-white/50 backdrop-blur-xl rounded-2xl shadow-lg shadow-slate-200/40 border border-slate-100 overflow-hidden">
                         <div className="overflow-x-auto">
                             <table className="w-full text-left border-collapse">
                                 <thead>
                                     <tr className="bg-gradient-to-r from-slate-50 to-slate-100/50 border-b border-slate-200/60">
-                                        <th className="px-6 py-5 text-slate-600 font-semibold text-sm uppercase tracking-wider">
+                                        <th className="px-4 py-3 text-slate-600 font-semibold text-xs uppercase tracking-wider">
                                             Mes
                                         </th>
                                         {[1, 2, 3, 4, 5].map(week => (
-                                            <th key={week} className="px-4 py-5 text-center text-slate-600 font-semibold text-sm uppercase tracking-wider">
+                                            <th key={week} className="px-3 py-3 text-center text-slate-600 font-semibold text-xs uppercase tracking-wider">
                                                 Sem {week}
                                             </th>
                                         ))}
-                                        <th className="px-4 py-5 text-center text-purple-600 font-semibold text-sm uppercase tracking-wider bg-purple-50/30">
+                                        <th className="px-3 py-3 text-center text-purple-600 font-semibold text-xs uppercase tracking-wider bg-purple-50/30">
                                             Rifa
                                         </th>
-                                        <th className="px-4 py-5 text-right text-slate-800 font-bold text-sm uppercase tracking-wider bg-slate-100/50">
+                                        <th className="px-3 py-3 text-right text-slate-800 font-bold text-xs uppercase tracking-wider bg-slate-100/50">
                                             Total
                                         </th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
                                     {months.map((monthName, monthIndex) => {
+                                        // Use the first filtered row (specific member/action)
                                         const row = paymentRows[0];
                                         if (!row) return null;
 
-                                        const weeklyAmounts = [1, 2, 3, 4, 5].map(week => {
-                                            const payment = weeklyPayments.find(p =>
-                                                p.memberId === row.memberId &&
-                                                p.year === selectedYear &&
-                                                p.month === monthIndex &&
-                                                p.week === week &&
-                                                p.actionAlias === row.actionAlias
-                                            );
-                                            return payment ? payment.amount : 0;
-                                        });
-
-                                        const fee = monthlyFees.find(f =>
-                                            f.memberId === row.memberId &&
-                                            f.year === selectedYear &&
-                                            f.month === monthIndex &&
-                                            f.actionAlias === row.actionAlias
-                                        );
-                                        const monthlyFee = fee ? fee.amount : 0;
-
+                                        const weeklyAmounts = [1, 2, 3, 4, 5].map(week => getWeeklyAmount(row.memberId, selectedYear, monthIndex, week, row.actionAlias));
+                                        const monthlyFee = getMonthlyFeeAmount(row.memberId, selectedYear, monthIndex, row.actionAlias);
                                         const monthTotal = weeklyAmounts.reduce((a, b) => a + b, 0) + monthlyFee;
 
                                         return (
@@ -390,39 +402,71 @@ const Payments: React.FC = () => {
                                                 initial={{ opacity: 0 }}
                                                 animate={{ opacity: 1 }}
                                                 transition={{ delay: monthIndex * 0.03 }}
-                                                className="hover:bg-indigo-50/30 transition-all duration-200"
+                                                className="hover:bg-indigo-50/30 transition-all duration-200 group"
                                             >
-                                                <td className="px-6 py-4 font-medium text-slate-700">
+                                                <td className={`px-4 py-2.5 font-bold text-sm border-l-4 ${monthClasses[monthIndex]}`}>
                                                     {monthName}
                                                 </td>
                                                 {weeklyAmounts.map((amount, weekIndex) => {
-                                                    let cellClasses = "px-4 py-4 text-center font-bold ";
-                                                    if (amount === 0) {
-                                                        cellClasses += "text-slate-300";
+                                                    const weekNum = weekIndex + 1;
+                                                    // Display logic for inputs
+                                                    let inputClasses = "w-16 pl-4 pr-1.5 py-1.5 text-center text-sm border rounded-xl focus:ring-2 transition-all font-medium ";
+                                                    if (amount === 0 || !amount) {
+                                                        inputClasses += "border-slate-200 bg-white hover:bg-slate-50 text-slate-700 focus:ring-indigo-500/30 focus:border-indigo-500";
                                                     } else if (amount >= 1 && amount < 7) {
-                                                        cellClasses += "text-amber-600 bg-amber-50/30";
+                                                        inputClasses += "border-amber-300 bg-amber-50/50 hover:bg-amber-50 text-amber-900 focus:ring-amber-500/30 focus:border-amber-500";
                                                     } else if (amount === 7) {
-                                                        cellClasses += "text-emerald-600 bg-emerald-50/30";
+                                                        inputClasses += "border-emerald-300 bg-emerald-50/50 hover:bg-emerald-50 text-emerald-900 focus:ring-emerald-500/30 focus:border-emerald-500";
                                                     } else {
-                                                        cellClasses += "text-rose-600 bg-rose-50/30";
+                                                        inputClasses += "border-rose-300 bg-rose-50/50 hover:bg-rose-50 text-rose-900 focus:ring-rose-500/30 focus:border-rose-500";
                                                     }
 
                                                     return (
-                                                        <td key={weekIndex} className={cellClasses}>
-                                                            ${amount.toFixed(2)}
+                                                        <td key={weekIndex} className="px-2 py-2 text-center">
+                                                            <div className="relative inline-block">
+                                                                <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none">$</span>
+                                                                <input
+                                                                    id={`cell-${monthIndex}-${weekIndex}`} // row=month, col=week-1
+                                                                    type="number"
+                                                                    step="0.01"
+                                                                    value={amount || ''}
+                                                                    onChange={(e) => handleWeeklyChange(row.memberId, selectedYear, monthIndex, weekNum, e.target.value, row.actionAlias)}
+                                                                    onKeyDown={(e) => handleKeyDown(e, monthIndex, weekIndex, 12)}
+                                                                    onInput={(e) => {
+                                                                        const input = e.target as HTMLInputElement;
+                                                                        input.value = input.value.replace(/[^0-9.]/g, '');
+                                                                    }}
+                                                                    className={inputClasses}
+                                                                    placeholder="0"
+                                                                    disabled={isSocio}
+                                                                />
+                                                            </div>
                                                         </td>
                                                     );
                                                 })}
-                                                <td className="px-4 py-4 text-center font-bold text-purple-700 bg-purple-50/20">
-                                                    {monthlyFee === 0 ? (
-                                                        <span className="text-slate-400 text-xs font-semibold">PEND</span>
-                                                    ) : (
-                                                        `$${monthlyFee.toFixed(2)}`
-                                                    )}
+                                                <td className="px-2 py-2 text-center bg-purple-50/20">
+                                                    <div className="relative inline-block">
+                                                        <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none">$</span>
+                                                        <input
+                                                            id={`cell-${monthIndex}-5`}
+                                                            type="number"
+                                                            step="0.01"
+                                                            value={monthlyFee || ''}
+                                                            onChange={(e) => handleMonthlyFeeChange(row.memberId, selectedYear, monthIndex, e.target.value, row.actionAlias)}
+                                                            onKeyDown={(e) => handleKeyDown(e, monthIndex, 5, 12)}
+                                                            onInput={(e) => {
+                                                                const input = e.target as HTMLInputElement;
+                                                                input.value = input.value.replace(/[^0-9.]/g, '');
+                                                            }}
+                                                            className="w-16 pl-4 pr-1.5 py-1.5 text-sm text-center border border-purple-200 rounded-xl focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500 transition-all bg-white hover:bg-purple-50 text-purple-700 font-medium disabled:opacity-75 disabled:bg-slate-50"
+                                                            placeholder="0"
+                                                            disabled={isSocio}
+                                                        />
+                                                    </div>
                                                 </td>
-                                                <td className="px-4 py-4 text-right bg-slate-50/50">
+                                                <td className="px-3 py-2.5 text-right bg-slate-50/50">
                                                     <span className={clsx(
-                                                        "font-bold text-lg px-3 py-1 rounded-lg",
+                                                        "font-bold text-sm px-2 py-0.5 rounded-lg",
                                                         monthTotal > 0 ? "text-emerald-700 bg-emerald-50" : "text-slate-400"
                                                     )}>
                                                         ${monthTotal.toFixed(2)}
@@ -434,13 +478,14 @@ const Payments: React.FC = () => {
                                 </tbody>
                             </table>
                         </div>
-                    </Card>
+                    </div>
                 </>
-            ) : (
-                /* ========== VISTA MENSUAL PARA ADMINISTRADORES (SIN CAMBIOS) ========== */
+            )}
+
+            {showMonthlyView && (
                 <>
-                    {/* Statistics Panel - Totals */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+                    {/* Admin Monthly View (All Members, 1 Month) */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
                         {/* Weekly Totals */}
                         {[1, 2, 3, 4, 5].map(week => (
                             <motion.div
@@ -448,28 +493,28 @@ const Payments: React.FC = () => {
                                 initial={{ opacity: 0, y: 20 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ delay: week * 0.05 }}
-                                className="bg-gradient-to-br from-indigo-50 to-indigo-100/50 rounded-2xl p-4 border border-indigo-200/50 shadow-sm hover:shadow-md transition-all"
+                                className="bg-gradient-to-br from-indigo-50 to-indigo-100/50 rounded-xl p-3 border border-indigo-200/50 shadow-sm hover:shadow-md transition-all"
                             >
-                                <div className="text-xs font-semibold text-indigo-600 uppercase tracking-wider mb-1">
+                                <div className="text-[10px] font-semibold text-indigo-600 uppercase tracking-wider mb-0.5">
                                     Sem {week}
                                 </div>
-                                <div className="text-2xl font-black text-indigo-900">
+                                <div className="text-lg font-black text-indigo-900">
                                     ${getWeekTotal(week).toFixed(2)}
                                 </div>
                             </motion.div>
                         ))}
 
-                        {/* Monthly Fee Total */}
+                        {/* Monthly Fee */}
                         <motion.div
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: 0.3 }}
-                            className="bg-gradient-to-br from-purple-50 to-fuchsia-100/50 rounded-2xl p-4 border border-purple-200/50 shadow-sm hover:shadow-md transition-all"
+                            className="bg-gradient-to-br from-purple-50 to-fuchsia-100/50 rounded-xl p-3 border border-purple-200/50 shadow-sm hover:shadow-md transition-all"
                         >
-                            <div className="text-xs font-semibold text-purple-600 uppercase tracking-wider mb-1">
+                            <div className="text-[10px] font-semibold text-purple-600 uppercase tracking-wider mb-0.5">
                                 Rifa Mensual
                             </div>
-                            <div className="text-2xl font-black text-purple-900">
+                            <div className="text-lg font-black text-purple-900">
                                 ${getMonthlyFeeTotal().toFixed(2)}
                             </div>
                         </motion.div>
@@ -479,44 +524,45 @@ const Payments: React.FC = () => {
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: 0.35 }}
-                            className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 rounded-2xl p-4 border border-emerald-200/50 shadow-md hover:shadow-lg transition-all col-span-2 md:col-span-1"
+                            className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 rounded-xl p-3 border border-emerald-200/50 shadow-md hover:shadow-lg transition-all col-span-2 md:col-span-1"
                         >
-                            <div className="text-xs font-semibold text-emerald-600 uppercase tracking-wider mb-1 flex items-center gap-1">
-                                <TrendingUp size={12} />
+                            <div className="text-[10px] font-semibold text-emerald-600 uppercase tracking-wider mb-0.5 flex items-center gap-1">
+                                <TrendingUp size={10} />
                                 Total General
                             </div>
-                            <div className="text-2xl font-black text-emerald-900">
+                            <div className="text-lg font-black text-emerald-900">
                                 ${getGrandTotal().toFixed(2)}
                             </div>
                         </motion.div>
                     </div>
 
-                    <Card className="overflow-hidden border-none shadow-xl shadow-slate-200/40 bg-white/50 backdrop-blur-xl rounded-3xl" padding="none">
+                    <Card className="overflow-hidden border-none shadow-lg shadow-slate-200/40 bg-white/50 backdrop-blur-xl rounded-2xl" padding="none">
                         <div className="overflow-x-auto">
                             <table className="w-full text-left border-collapse">
                                 <thead>
                                     <tr className="bg-gradient-to-r from-slate-50 to-slate-100/50 border-b border-slate-200/60">
-                                        <th className="px-6 py-5 text-slate-600 font-semibold text-sm uppercase tracking-wider sticky left-0 bg-gradient-to-r from-slate-50 to-slate-100/50 z-10">
+                                        <th className="px-4 py-3 text-slate-600 font-semibold text-xs uppercase tracking-wider sticky left-0 bg-gradient-to-r from-slate-50 to-slate-100/50 z-10">
                                             Socio / Acción
                                         </th>
                                         {[1, 2, 3, 4, 5].map(week => (
-                                            <th key={week} className="px-4 py-5 text-center text-slate-600 font-semibold text-sm uppercase tracking-wider">
+                                            <th key={week} className="px-3 py-3 text-center text-slate-600 font-semibold text-xs uppercase tracking-wider">
                                                 Sem {week}
                                             </th>
                                         ))}
-                                        <th className="px-4 py-5 text-center text-purple-600 font-semibold text-sm uppercase tracking-wider bg-purple-50/30">
+                                        <th className="px-3 py-3 text-center text-purple-600 font-semibold text-xs uppercase tracking-wider bg-purple-50/30">
                                             Rifa Mensual
                                         </th>
-                                        <th className="px-4 py-5 text-right text-slate-800 font-bold text-sm uppercase tracking-wider bg-slate-100/50">
+                                        <th className="px-3 py-3 text-right text-slate-800 font-bold text-xs uppercase tracking-wider bg-slate-100/50">
                                             Total
                                         </th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
                                     {paymentRows.map((row, rowIndex) => {
-                                        const rowTotal = getRowTotal(row);
-                                        const monthlyFee = getMonthlyFeeAmount(row.memberId, row.actionAlias);
-                                        const total = rowTotal + monthlyFee;
+                                        // Row total calc needs to match week/month
+                                        let rowTotal = 0;
+                                        for (let w = 1; w <= 5; w++) rowTotal += getWeeklyAmount(row.memberId, selectedYear, selectedMonth, w, row.actionAlias);
+                                        rowTotal += getMonthlyFeeAmount(row.memberId, selectedYear, selectedMonth, row.actionAlias);
 
                                         return (
                                             <motion.tr
@@ -526,15 +572,15 @@ const Payments: React.FC = () => {
                                                 transition={{ delay: rowIndex * 0.02 }}
                                                 className="hover:bg-indigo-50/30 transition-all duration-200 group"
                                             >
-                                                <td className="px-6 py-4 sticky left-0 bg-white group-hover:bg-indigo-50/30 transition-colors z-10">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-100 to-indigo-200 text-indigo-700 flex items-center justify-center font-bold text-xs shadow-sm">
+                                                <td className="px-4 py-2.5 sticky left-0 bg-white group-hover:bg-indigo-50/30 transition-colors z-10">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-6 h-6 rounded-full bg-gradient-to-br from-indigo-100 to-indigo-200 text-indigo-700 flex items-center justify-center font-bold text-[10px] shadow-sm">
                                                             {row.memberName.charAt(0)}
                                                         </div>
                                                         <div>
-                                                            <div className="font-medium text-slate-700">{row.memberName}</div>
+                                                            <div className="font-medium text-slate-700 text-sm">{row.memberName}</div>
                                                             {row.actionAlias && (
-                                                                <div className="text-xs text-purple-600 font-medium bg-purple-50 px-2 py-0.5 rounded-full inline-block mt-0.5">
+                                                                <div className="text-[10px] text-purple-600 font-medium bg-purple-50 px-1.5 py-0.5 rounded-full inline-block mt-0.5">
                                                                     {row.actionAlias}
                                                                 </div>
                                                             )}
@@ -543,76 +589,68 @@ const Payments: React.FC = () => {
                                                 </td>
 
                                                 {[1, 2, 3, 4, 5].map((week, colIndex) => {
-                                                    const amount = getWeeklyAmount(row.memberId, week, row.actionAlias);
+                                                    const amount = getWeeklyAmount(row.memberId, selectedYear, selectedMonth, week, row.actionAlias);
 
-                                                    // Determine input style based on amount
-                                                    let inputClasses = "w-20 pl-5 pr-2 py-2 text-center border rounded-lg focus:ring-2 transition-all font-medium ";
-
+                                                    let inputClasses = "w-16 pl-4 pr-1.5 py-1.5 text-center text-sm border rounded-xl focus:ring-2 transition-all font-medium ";
                                                     if (amount === 0 || !amount) {
-                                                        // No payment - default style
                                                         inputClasses += "border-slate-200 bg-white hover:bg-slate-50 text-slate-700 focus:ring-indigo-500/30 focus:border-indigo-500";
                                                     } else if (amount >= 1 && amount < 7) {
-                                                        // Incomplete payment - amber/yellow warning
                                                         inputClasses += "border-amber-300 bg-amber-50/50 hover:bg-amber-50 text-amber-900 focus:ring-amber-500/30 focus:border-amber-500";
                                                     } else if (amount === 7) {
-                                                        // Complete payment - green success
                                                         inputClasses += "border-emerald-300 bg-emerald-50/50 hover:bg-emerald-50 text-emerald-900 focus:ring-emerald-500/30 focus:border-emerald-500";
                                                     } else {
-                                                        // Overpayment - soft red
                                                         inputClasses += "border-rose-300 bg-rose-50/50 hover:bg-rose-50 text-rose-900 focus:ring-rose-500/30 focus:border-rose-500";
                                                     }
 
                                                     return (
-                                                        <td key={week} className="px-2 py-3 text-center">
+                                                        <td key={week} className="px-2 py-2 text-center">
                                                             <div className="relative inline-block">
-                                                                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none">$</span>
+                                                                <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none">$</span>
                                                                 <input
                                                                     id={`cell-${rowIndex}-${colIndex}`}
                                                                     type="number"
                                                                     step="0.01"
                                                                     value={amount || ''}
-                                                                    onChange={(e) => handleWeeklyChange(row.memberId, week, e.target.value, row.actionAlias)}
-                                                                    onKeyDown={(e) => handleKeyDown(e, rowIndex, colIndex)}
+                                                                    onChange={(e) => handleWeeklyChange(row.memberId, selectedYear, selectedMonth, week, e.target.value, row.actionAlias)}
+                                                                    onKeyDown={(e) => handleKeyDown(e, rowIndex, colIndex, paymentRows.length)}
                                                                     onInput={(e) => {
                                                                         const input = e.target as HTMLInputElement;
                                                                         input.value = input.value.replace(/[^0-9.]/g, '');
                                                                     }}
                                                                     className={inputClasses}
                                                                     placeholder="0"
-                                                                    disabled={currentUser?.role === 'socio'}
                                                                 />
                                                             </div>
                                                         </td>
                                                     );
                                                 })}
 
-                                                <td className="px-2 py-3 text-center bg-purple-50/20">
+                                                <td className="px-2 py-2 text-center bg-purple-50/20">
                                                     <div className="relative inline-block">
-                                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none">$</span>
+                                                        <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none">$</span>
                                                         <input
                                                             id={`cell-${rowIndex}-5`}
                                                             type="number"
                                                             step="0.01"
-                                                            value={monthlyFee || ''}
-                                                            onChange={(e) => handleMonthlyFeeChange(row.memberId, e.target.value, row.actionAlias)}
-                                                            onKeyDown={(e) => handleKeyDown(e, rowIndex, 5)}
+                                                            value={getMonthlyFeeAmount(row.memberId, selectedYear, selectedMonth, row.actionAlias) || ''}
+                                                            onChange={(e) => handleMonthlyFeeChange(row.memberId, selectedYear, selectedMonth, e.target.value, row.actionAlias)}
+                                                            onKeyDown={(e) => handleKeyDown(e, rowIndex, 5, paymentRows.length)}
                                                             onInput={(e) => {
                                                                 const input = e.target as HTMLInputElement;
                                                                 input.value = input.value.replace(/[^0-9.]/g, '');
                                                             }}
-                                                            className="w-20 pl-5 pr-2 py-2 text-center border border-purple-200 rounded-lg focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500 transition-all bg-white hover:bg-purple-50 text-purple-700 font-medium"
+                                                            className="w-16 pl-4 pr-1.5 py-1.5 text-sm text-center border border-purple-200 rounded-xl focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500 transition-all bg-white hover:bg-purple-50 text-purple-700 font-medium"
                                                             placeholder="0"
-                                                            disabled={currentUser?.role === 'socio'}
                                                         />
                                                     </div>
                                                 </td>
 
-                                                <td className="px-4 py-4 text-right bg-slate-50/50">
+                                                <td className="px-3 py-2.5 text-right bg-slate-50/50">
                                                     <span className={clsx(
-                                                        "font-bold text-lg px-3 py-1 rounded-lg",
-                                                        total > 0 ? "text-emerald-700 bg-emerald-50" : "text-slate-400"
+                                                        "font-bold text-sm px-2 py-0.5 rounded-lg",
+                                                        rowTotal > 0 ? "text-emerald-700 bg-emerald-50" : "text-slate-400"
                                                     )}>
-                                                        ${total.toFixed(2)}
+                                                        ${rowTotal.toFixed(2)}
                                                     </span>
                                                 </td>
                                             </motion.tr>

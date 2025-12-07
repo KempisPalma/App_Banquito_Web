@@ -15,11 +15,12 @@ const Login: React.FC = () => {
     const location = useLocation();
     const successMessage = (location.state as any)?.message;
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
 
-        if (login(username, password)) {
+        const success = await login(username, password);
+        if (success) {
             navigate('/');
         } else {
             setError('Usuario o contraseña incorrectos');

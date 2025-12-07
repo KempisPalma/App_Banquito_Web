@@ -8,7 +8,7 @@ import { useBanquito } from '../context/BanquitoContext';
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const location = useLocation();
     const navigate = useNavigate();
-    const { loans, members, currentUser, logout, activities } = useBanquito();
+    const { loans, members, currentUser, logout, activities, weeklyPayments, monthlyFees, memberActivities, importBackup } = useBanquito();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
     const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState(false);
     const [isNotificationOpen, setIsNotificationOpen] = React.useState(false);
@@ -23,20 +23,26 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         { path: '/activities', label: 'Actividades', icon: Gift, permission: null, visibleForSocio: true },
         { path: '/loans', label: 'Préstamos', icon: CreditCard, permission: null, visibleForSocio: true },
         { path: '/report', label: 'Reporte', icon: FileText, permission: 'view_reports', visibleForSocio: false },
-        { path: '/admin/users', label: 'Usuarios', icon: Shield, permission: 'admin', visibleForSocio: false },
+        { path: '/users', label: 'Usuarios', icon: Shield, permission: 'admin', visibleForSocio: false },
     ];
 
+    const currentPath = location.pathname;
+
+    // Filter nav items based on user role and permissions
     const filteredNavItems = navItems.filter(item => {
         if (!currentUser) return false;
 
-        // If user is socio, only show items marked as visible for socio
+        // If socio, only show items visibleForSocio
         if (currentUser.role === 'socio') {
             return item.visibleForSocio;
         }
 
-        // For other users, check permissions as before
-        if (!item.permission) return true; // Dashboard is for everyone
-        return currentUser.role === 'admin' || currentUser.permissions.includes(item.permission as any);
+        // For other roles (admin, tesorero), check permissions
+        if (item.permission) {
+            return currentUser.permissions?.includes(item.permission) || currentUser.role === 'admin';
+        }
+
+        return true;
     });
 
     const activeIndex = filteredNavItems.findIndex(item => item.path === location.pathname);
@@ -142,12 +148,12 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
     const handleExportData = () => {
         const data = {
-            members: members,
-            loans: loans,
-            weeklyPayments: JSON.parse(localStorage.getItem('banquito_weeklyPayments') || '[]'),
-            monthlyFees: JSON.parse(localStorage.getItem('banquito_monthlyFees') || '[]'),
-            activities: JSON.parse(localStorage.getItem('banquito_activities') || '[]'),
-            memberActivities: JSON.parse(localStorage.getItem('banquito_memberActivities') || '[]'),
+            members,
+            loans,
+            weeklyPayments,
+            monthlyFees,
+            activities,
+            memberActivities,
             exportDate: new Date().toISOString()
         };
 
@@ -168,21 +174,21 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         if (!file) return;
 
         const reader = new FileReader();
-        reader.onload = (e) => {
+        reader.onload = async (e) => {
             try {
                 const data = JSON.parse(e.target?.result as string);
 
-                if (data.members) localStorage.setItem('banquito_members', JSON.stringify(data.members));
-                if (data.loans) localStorage.setItem('banquito_loans', JSON.stringify(data.loans));
-                if (data.weeklyPayments) localStorage.setItem('banquito_weeklyPayments', JSON.stringify(data.weeklyPayments));
-                if (data.monthlyFees) localStorage.setItem('banquito_monthlyFees', JSON.stringify(data.monthlyFees));
-                if (data.activities) localStorage.setItem('banquito_activities', JSON.stringify(data.activities));
-                if (data.memberActivities) localStorage.setItem('banquito_memberActivities', JSON.stringify(data.memberActivities));
+                // Use context import function
+                const success = await importBackup(data);
 
-                alert('Datos importados correctamente. La página se recargará.');
-                window.location.reload();
+                if (success) {
+                    alert('✅ Datos importados correctamente. La página se recargará.');
+                    window.location.reload();
+                } else {
+                    alert('❌ Error al importar datos. Verifica la conexión con el servidor.');
+                }
             } catch (error) {
-                alert('Error al importar datos. Verifica que el archivo sea válido.');
+                alert('Error al leer el archivo. Verifica que sea un JSON válido.');
             }
         };
         reader.readAsText(file);
@@ -582,7 +588,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                     )}
                 </AnimatePresence>
 
-                <main className="flex-1 overflow-auto px-8 pb-8">
+                <main className="flex-1 overflow-auto px-6 pb-6">
                     {children}
                 </main>
             </motion.div>
