@@ -182,7 +182,7 @@ const Payments: React.FC = () => {
 
     return (
         <div className="space-y-8">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 pb-6 border-b border-slate-200/60">
+            <div className="sticky top-0 z-20 bg-gradient-to-b from-slate-50 via-slate-50 to-slate-50/95 backdrop-blur-md flex flex-col md:flex-row justify-between items-start md:items-end gap-6 pb-6 pt-4">
                 <div>
                     <h1 className="text-4xl font-bold text-slate-800 tracking-tight">
                         {currentUser?.role === 'socio' ? 'Mis Pagos' : 'Pagos Semanales'}
