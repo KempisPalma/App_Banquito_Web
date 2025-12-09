@@ -62,6 +62,11 @@ export interface Loan {
     endDate: string;
     status: 'active' | 'paid' | 'overdue';
     payments: LoanPayment[];
+    // Accounting state
+    pendingPrincipal: number;
+    pendingInterest: number;
+    lastPaymentDate?: string;
+    nextDueDate?: string;
 }
 
 export interface LoanPayment {

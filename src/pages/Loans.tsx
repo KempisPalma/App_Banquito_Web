@@ -19,7 +19,7 @@ const Loans: React.FC = () => {
     const [historyModalOpen, setHistoryModalOpen] = useState(false);
     const [selectedLoanHistory, setSelectedLoanHistory] = useState<typeof loans[0] | null>(null);
 
-    const [formData, setFormData] = useState({
+    const initialFormState = {
         borrowerType: 'member' as 'member' | 'external',
         memberId: '',
         actionAlias: '',
@@ -28,7 +28,9 @@ const Loans: React.FC = () => {
         interestRate: 10,
         startDate: new Date().toISOString().split('T')[0],
         endDate: ''
-    });
+    };
+
+    const [formData, setFormData] = useState(initialFormState);
 
     const [paymentPrincipalAmount, setPaymentPrincipalAmount] = useState(0);
     const [paymentInterestAmount, setPaymentInterestAmount] = useState(0);
@@ -100,24 +102,17 @@ const Loans: React.FC = () => {
                 startDate: formData.startDate,
                 endDate: formData.endDate,
                 status: 'active',
-                payments: []
+                payments: [],
+                pendingPrincipal: formData.amount,
+                pendingInterest: 0
             });
         }
         setIsModalOpen(false);
-        resetForm();
+        setFormData(initialFormState);
     };
 
     const resetForm = () => {
-        setFormData({
-            borrowerType: 'member',
-            memberId: '',
-            actionAlias: '',
-            clientName: '',
-            amount: 0,
-            interestRate: 10,
-            startDate: new Date().toISOString().split('T')[0],
-            endDate: ''
-        });
+        setFormData(initialFormState);
         setIsEditMode(false);
         setEditingLoanId(null);
     };
@@ -188,7 +183,7 @@ const Loans: React.FC = () => {
         setSelectedLoanId(loanId);
         setEditingPaymentId(payment.id);
         setPaymentDate(payment.date.split('T')[0]);
-
+    
         if (payment.paymentType === 'principal') {
             setPaymentPrincipalAmount(payment.amount);
             setPaymentInterestAmount(0);
@@ -196,7 +191,7 @@ const Loans: React.FC = () => {
             setPaymentInterestAmount(payment.amount);
             setPaymentPrincipalAmount(0);
         }
-
+    
         setIsEditingPayment(true);
         setPaymentModalOpen(true);
     };
@@ -456,18 +451,33 @@ const Loans: React.FC = () => {
                                         </div>
                                     </div>
 
-                                    <div className="space-y-1.5">
-                                        <div className="flex justify-between text-[10px] font-medium text-slate-500">
-                                            <span>Pagado: <span className="text-emerald-600">${calculations.totalPaid.toFixed(2)}</span></span>
-                                            <span>Restante: <span className="text-orange-600">${calculations.remaining.toFixed(2)}</span></span>
+                                    {/* Progress & Balances */}
+                                    <div className="space-y-3 mb-4">
+                                        <div className="flex justify-between text-[10px] uppercase font-bold text-slate-500">
+                                            <span>Progreso</span>
+                                            <span className="text-emerald-600">{Math.round(progress)}%</span>
                                         </div>
-                                        <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                                            <motion.div
-                                                className="bg-gradient-to-r from-emerald-500 to-emerald-400 h-full rounded-full"
-                                                initial={{ width: 0 }}
-                                                animate={{ width: `${progress}%` }}
-                                                transition={{ duration: 1, ease: "easeOut" }}
+                                        <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                                            <div
+                                                className="bg-emerald-500 h-full rounded-full transition-all duration-500"
+                                                style={{ width: `${progress}%` }}
                                             />
+                                        </div>
+
+                                        {/* New Detailed Balances */}
+                                        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
+                                            <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
+                                                <p className="text-[9px] text-slate-400 uppercase font-bold tracking-wider mb-0.5">Capital Pendiente</p>
+                                                <p className="text-sm font-bold text-slate-700">
+                                                    ${(loan.pendingPrincipal ?? calculations.remaining).toFixed(2)}
+                                                </p>
+                                            </div>
+                                            <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
+                                                <p className="text-[9px] text-slate-400 uppercase font-bold tracking-wider mb-0.5">Interés Pendiente</p>
+                                                <p className="text-sm font-bold text-slate-700">
+                                                    ${(loan.pendingInterest ?? 0).toFixed(2)}
+                                                </p>
+                                            </div>
                                         </div>
                                     </div>
 
@@ -871,24 +881,27 @@ const Loans: React.FC = () => {
                             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
                                 <div className="flex justify-between items-start mb-3">
                                     <div>
-                                        <h3 className="text-lg font-bold text-slate-800 leading-tight">{borrowerName}</h3>
+                                        <h3 className="font-bold text-slate-800 text-lg leading-tight">{borrowerName}</h3>
                                         {selectedLoanHistory.actionAlias && (
-                                            <p className="text-xs font-bold text-indigo-600 mt-1">{selectedLoanHistory.actionAlias}</p>
+                                            <p className="text-xs font-bold text-indigo-600 mt-0.5">{selectedLoanHistory.actionAlias}</p>
                                         )}
                                         <div className="flex items-center gap-2 mt-2">
                                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border ${selectedLoanHistory.status === 'paid' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
-                                                    isOverdue ? 'bg-red-50 text-red-700 border-red-100' :
-                                                        'bg-blue-50 text-blue-700 border-blue-100'
+                                                isOverdue ? 'bg-red-50 text-red-700 border-red-100' :
+                                                    'bg-blue-50 text-blue-700 border-blue-100'
                                                 }`}>
                                                 {selectedLoanHistory.status === 'paid' ? 'Pagado' : isOverdue ? 'Vencido' : 'Activo'}
                                             </span>
-                                            <span className="text-[10px] text-slate-400 font-medium">
-                                                Vence: {new Date(selectedLoanHistory.endDate).toLocaleDateString()}
+                                            <span className="text-[10px] text-slate-400 font-medium flex items-center gap-1">
+                                                <Clock size={10} />
+                                                {selectedLoanHistory.status === 'paid' ? 'Finalizado' : (
+                                                    <>Vence: {new Date(selectedLoanHistory.nextDueDate || selectedLoanHistory.endDate).toLocaleDateString()}</>
+                                                )}
                                             </span>
                                         </div>
                                     </div>
                                     <div className="text-right">
-                                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-0.5">Monto</p>
+                                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-0.5">Monto Original</p>
                                         <p className="text-base font-black text-slate-900">${selectedLoanHistory.amount.toFixed(2)}</p>
                                     </div>
                                 </div>

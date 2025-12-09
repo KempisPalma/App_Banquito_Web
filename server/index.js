@@ -338,6 +338,11 @@ app.get('/api/loans', (req, res) => {
             startDate: l.start_date,
             endDate: l.end_date,
             status: l.status,
+            // Accounting
+            pendingPrincipal: l.pending_principal !== null ? l.pending_principal : l.amount,
+            pendingInterest: l.pending_interest !== null ? l.pending_interest : 0,
+            lastPaymentDate: l.last_payment_date,
+            nextDueDate: l.next_due_date,
             payments: payments.map(p => ({
                 id: p.id,
                 loanId: p.loan_id,
@@ -355,9 +360,9 @@ app.post('/api/loans', (req, res) => {
     const id = uuidv4();
 
     db.prepare(`
-        INSERT INTO loans (id, member_id, action_alias, client_name, borrower_type, amount, interest_rate, start_date, end_date, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, memberId || null, actionAlias || null, clientName || null, borrowerType, amount, interestRate, startDate, endDate, status || 'active');
+        INSERT INTO loans (id, member_id, action_alias, client_name, borrower_type, amount, interest_rate, start_date, end_date, status, pending_principal, pending_interest, next_due_date)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, memberId || null, actionAlias || null, clientName || null, borrowerType, amount, interestRate, startDate, endDate, status || 'active', amount, 0, endDate); // Initial next_due_date = endDate (usually 1st month)
 
     res.json({ id, memberId, actionAlias, clientName, borrowerType, amount, interestRate, startDate, endDate, status: status || 'active', payments: [] });
 });
@@ -389,15 +394,49 @@ app.post('/api/loans/:id/payments', (req, res) => {
         VALUES (?, ?, ?, ?, ?)
     `).run(paymentId, id, amount, paymentType, date || new Date().toISOString());
 
-    // Update loan status if fully paid
+    // --- Advanced Logic Update ---
+    // 1. Get current loan state
     const loan = db.prepare('SELECT * FROM loans WHERE id = ?').get(id);
-    const payments = db.prepare('SELECT * FROM loan_payments WHERE loan_id = ?').all(id);
-    const totalPaid = payments.reduce((acc, p) => acc + p.amount, 0);
-    const totalDue = loan.amount + (loan.amount * loan.interest_rate / 100);
+    let { pending_principal, pending_interest, interest_rate } = loan;
 
-    if (totalPaid >= totalDue) {
-        db.prepare('UPDATE loans SET status = ? WHERE id = ?').run('paid', id);
+    // Initialize if null (migration case)
+    if (pending_principal === null) pending_principal = loan.amount;
+    if (pending_interest === null) pending_interest = 0;
+
+    // 2. Apply payment
+    if (paymentType === 'principal') {
+        pending_principal -= amount;
+        if (pending_principal < 0) pending_principal = 0;
+    } else {
+        pending_interest -= amount;
+        if (pending_interest < 0) pending_interest = 0;
     }
+
+    // 3. Update status (if fully paid)
+    // Basic check: if principal is 0, is it paid? 
+    // Usually we check if principal is 0. Interest might still be pending or accrued?
+    // Let's stick to simple logic: if pending_principal <= 0.01 (float tolerance), status = paid
+    let newStatus = loan.status;
+    if (pending_principal <= 0.01) {
+        newStatus = 'paid';
+    }
+
+    // 4. Update Dates
+    // "Nueva fecha de vencimiento será 1 mes desde la fecha del último abono"
+    const paymentDateObj = new Date(date || new Date().toISOString());
+    const nextDueDateObj = new Date(paymentDateObj);
+    nextDueDateObj.setMonth(nextDueDateObj.getMonth() + 1);
+    const nextDueDate = nextDueDateObj.toISOString();
+
+    db.prepare(`
+        UPDATE loans 
+        SET pending_principal = ?, 
+            pending_interest = ?, 
+            last_payment_date = ?, 
+            next_due_date = ?,
+            status = ?
+        WHERE id = ?
+    `).run(pending_principal, pending_interest, date || new Date().toISOString(), nextDueDate, newStatus, id);
 
     res.json({ id: paymentId, loanId: id, amount, paymentType, date: date || new Date().toISOString() });
 });

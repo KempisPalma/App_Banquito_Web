@@ -124,6 +124,31 @@ db.exec(`
     );
 `);
 
+// ==================== MIGRATIONS ====================
+try {
+    db.prepare('ALTER TABLE loans ADD COLUMN pending_principal REAL').run();
+} catch (error) {
+    // Column likely exists
+}
+
+try {
+    db.prepare('ALTER TABLE loans ADD COLUMN pending_interest REAL').run();
+} catch (error) {
+    // Column likely exists
+}
+
+try {
+    db.prepare('ALTER TABLE loans ADD COLUMN last_payment_date TEXT').run();
+} catch (error) {
+    // Column likely exists
+}
+
+try {
+    db.prepare('ALTER TABLE loans ADD COLUMN next_due_date TEXT').run();
+} catch (error) {
+    // Column likely exists
+}
+
 // Insert default admin user if not exists
 const adminExists = db.prepare('SELECT id FROM users WHERE username = ?').get('admin');
 if (!adminExists) {
