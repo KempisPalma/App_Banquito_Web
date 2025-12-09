@@ -132,7 +132,7 @@ const Payments: React.FC = () => {
                 displayName: member.name
             }];
         }
-    });
+    }) as PaymentRow[];
 
     // Helpers
     const getWeeklyAmount = (memberId: string, year: number, month: number, week: number, actionAlias?: string) => {

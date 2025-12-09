@@ -80,18 +80,18 @@ const GeneralReport: React.FC = () => {
                 return m.aliases.map(alias => ({ member: m, actionAlias: alias }));
             }
             return [{ member: m, actionAlias: undefined }];
-        });
+        }) as { member: any; actionAlias: string | undefined }[];
     }, [members]);
 
     // 1. Savings per Identity (Weekly + Monthly Fees)
     const getIdentitySavings = (memberId: string, actionAlias?: string) => {
         const weekly = weeklyPayments
             .filter(p => p.memberId === memberId && p.year === selectedYear && p.actionAlias === actionAlias)
-            .reduce((acc, curr) => acc + curr.amount, 0);
+            .reduce((acc: number, curr: any) => acc + curr.amount, 0);
 
         const monthly = monthlyFees
             .filter(f => f.memberId === memberId && f.year === selectedYear && f.actionAlias === actionAlias)
-            .reduce((acc, curr) => acc + curr.amount, 0);
+            .reduce((acc: number, curr: any) => acc + curr.amount, 0);
 
         return { weekly, monthly, total: weekly + monthly };
     };
@@ -106,7 +106,7 @@ const GeneralReport: React.FC = () => {
             .reduce((total, loan) => {
                 const principalPaid = loan.payments
                     .filter(p => p.paymentType === 'principal')
-                    .reduce((acc, curr) => acc + curr.amount, 0);
+                    .reduce((acc: number, curr: any) => acc + curr.amount, 0);
                 return total + (loan.amount - principalPaid);
             }, 0);
 
@@ -114,14 +114,14 @@ const GeneralReport: React.FC = () => {
         const interestCollected = yearLoans.reduce((total, loan) => {
             const interestPayments = loan.payments
                 .filter(p => new Date(p.date).getFullYear() === selectedYear && p.paymentType === 'interest')
-                .reduce((acc, curr) => acc + curr.amount, 0);
+                .reduce((acc: number, curr: any) => acc + curr.amount, 0);
             return total + interestPayments;
         }, 0);
 
         // Total amount ever lent (Volume)
         const totalLentVolume = yearLoans
             .filter(l => new Date(l.startDate).getFullYear() === selectedYear)
-            .reduce((acc, curr) => acc + curr.amount, 0);
+            .reduce((acc: number, curr: any) => acc + curr.amount, 0);
 
         return { principalOutstanding, interestCollected, totalLentVolume };
     }, [loans, selectedYear]);
@@ -133,34 +133,21 @@ const GeneralReport: React.FC = () => {
         const totalRevenue = yearActivities.reduce((total, activity) => {
             const sales = memberActivities
                 .filter(ma => ma.activityId === activity.id)
-                .reduce((acc, curr) => acc + (curr.ticketsSold * activity.ticketPrice), 0);
+                .reduce((acc: number, curr: any) => acc + (curr.ticketsSold * activity.ticketPrice), 0);
             return total + sales;
         }, 0);
 
-        const totalInvestment = yearActivities.reduce((acc, curr) => acc + (curr.investment || 0), 0);
+        const totalInvestment = yearActivities.reduce((acc: number, curr: any) => acc + (curr.investment || 0), 0);
         const netProfit = totalRevenue - totalInvestment;
 
         return { totalRevenue, totalInvestment, netProfit, count: yearActivities.length };
     }, [activities, memberActivities, selectedYear]);
 
     // 4. Eligibility for Loan Profit Share (Per Action)
-    const getIdentityLoanEligibility = (memberId: string, actionAlias?: string) => {
-        // Loans taken by this specific action
-        const identityLoans = loans.filter(l =>
-            l.memberId === memberId &&
-            l.borrowerType === 'member' &&
-            l.actionAlias === actionAlias
-        );
-        const hasLoan = identityLoans.length > 0;
+    // unused-vars: getIdentityLoanEligibility
+    // const getIdentityLoanEligibility = (memberId: string, actionAlias?: string) => {
+    // Loans taken by this specific action
 
-        const totalInterestPaid = identityLoans.reduce((total, loan) => {
-            return total + loan.payments
-                .filter(p => p.paymentType === 'interest')
-                .reduce((acc, curr) => acc + curr.amount, 0);
-        }, 0);
-
-        return hasLoan || totalInterestPaid >= 10;
-    };
 
     // Calculate Shares
     // Calculate Shares
@@ -188,7 +175,6 @@ const GeneralReport: React.FC = () => {
             name: member.name,
             actionAlias,
             savings,
-            savings,
             loanShare,
             activityShare,
             totalReceive,
@@ -196,8 +182,8 @@ const GeneralReport: React.FC = () => {
         };
     });
 
-    const grandTotalSavings = reportData.reduce((acc, curr) => acc + curr.savings.total, 0);
-    const grandTotalDistributed = reportData.reduce((acc, curr) => acc + curr.totalReceive, 0);
+    const grandTotalSavings = reportData.reduce((acc: number, curr: any) => acc + curr.savings.total, 0);
+    const grandTotalDistributed = reportData.reduce((acc: number, curr: any) => acc + curr.totalReceive, 0);
 
     // Cash on Hand: Total Savings - Money Lent Out - Money Spent on Activities + Activity Revenue (Revenue is already in Banquito? No, revenue comes in. Investment goes out.)
     // Actually simpler: Cash = (Savings + Loan Interest + Activity Revenue) - (Loan Principal Outstanding + Activity Investment)
@@ -376,10 +362,10 @@ const GeneralReport: React.FC = () => {
                                 <td className="px-6 py-4">TOTALES</td>
                                 <td className="px-6 py-4 text-right">${grandTotalSavings.toFixed(2)}</td>
                                 <td className="px-6 py-4 text-right text-emerald-700">
-                                    ${reportData.reduce((acc, curr) => acc + curr.loanShare, 0).toFixed(2)}
+                                    ${reportData.reduce((acc: number, curr: any) => acc + curr.loanShare, 0).toFixed(2)}
                                 </td>
                                 <td className="px-6 py-4 text-right text-purple-700">
-                                    ${reportData.reduce((acc, curr) => acc + curr.activityShare, 0).toFixed(2)}
+                                    ${reportData.reduce((acc: number, curr: any) => acc + curr.activityShare, 0).toFixed(2)}
                                 </td>
                                 <td className="px-6 py-4 text-right text-xl">${grandTotalDistributed.toFixed(2)}</td>
                                 <td></td>

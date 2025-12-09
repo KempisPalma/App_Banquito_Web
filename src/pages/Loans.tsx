@@ -183,6 +183,7 @@ const Loans: React.FC = () => {
         setPaymentModalOpen(true);
     };
 
+    /*
     const openEditPaymentModal = (loanId: string, payment: typeof loans[0]['payments'][0]) => {
         setSelectedLoanId(loanId);
         setEditingPaymentId(payment.id);
@@ -199,6 +200,7 @@ const Loans: React.FC = () => {
         setIsEditingPayment(true);
         setPaymentModalOpen(true);
     };
+    */
 
     const openEditPaymentGroupModal = (loanId: string, date: string, payments: typeof loans[0]['payments']) => {
         setSelectedLoanId(loanId);
@@ -214,10 +216,12 @@ const Loans: React.FC = () => {
         setPaymentModalOpen(true);
     };
 
+    /*
     const handleDeletePayment = (loanId: string, paymentId: string, paymentAmount: number) => {
         setPaymentToDelete({ loanId, paymentId, amount: paymentAmount });
         setDeleteConfirmOpen(true);
     };
+    */
 
     const confirmDeletePayment = () => {
         if (paymentToDelete) {
