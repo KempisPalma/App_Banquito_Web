@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import type { Member, WeeklyPayment, MonthlyFee, Activity, MemberActivity, Loan, LoanPayment, User } from '../types';
+import type { Member, WeeklyPayment, MonthlyFee, Activity, MemberActivity, Loan, User } from '../types';
 
 const API_BASE = 'http://localhost:3001/api';
 

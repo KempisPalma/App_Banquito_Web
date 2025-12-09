@@ -26,8 +26,6 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         { path: '/users', label: 'Usuarios', icon: Shield, permission: 'admin', visibleForSocio: false },
     ];
 
-    const currentPath = location.pathname;
-
     // Filter nav items based on user role and permissions
     const filteredNavItems = navItems.filter(item => {
         if (!currentUser) return false;
@@ -39,7 +37,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
         // For other roles (admin, tesorero), check permissions
         if (item.permission) {
-            return currentUser.permissions?.includes(item.permission) || currentUser.role === 'admin';
+            return currentUser.permissions?.includes(item.permission as any) || currentUser.role === 'admin';
         }
 
         return true;

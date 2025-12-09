@@ -3,7 +3,7 @@ import { useBanquito } from '../context/BanquitoContext';
 import { Card } from '../components/ui/Card';
 import { motion } from 'framer-motion';
 import { clsx } from 'clsx';
-import { Calendar, TrendingUp, Users, User, ArrowLeft } from 'lucide-react';
+import { Calendar, TrendingUp, Users, User } from 'lucide-react';
 
 // Type for each row in the payment table
 type PaymentRow = {
@@ -128,7 +128,7 @@ const Payments: React.FC = () => {
             return [{
                 memberId: member.id,
                 memberName: member.name,
-                actionAlias: undefined,
+                actionAlias: '',
                 displayName: member.name
             }];
         }

@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import { useState, type FC, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useBanquito } from '../context/BanquitoContext';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { UserPlus, CreditCard, User, Lock, AlertCircle, CheckCircle } from 'lucide-react';
 
-const MemberRegister: React.FC = () => {
+const MemberRegister: FC = () => {
     const navigate = useNavigate();
     const { members, registerMember } = useBanquito();
     const [step, setStep] = useState<'cedula' | 'account'>('cedula');
@@ -16,7 +16,7 @@ const MemberRegister: React.FC = () => {
     const [error, setError] = useState('');
     const [validatedMember, setValidatedMember] = useState<typeof members[0] | null>(null);
 
-    const handleCedulaValidation = (e: React.FormEvent) => {
+    const handleCedulaValidation = (e: FormEvent) => {
         e.preventDefault();
         setError('');
 
@@ -38,7 +38,7 @@ const MemberRegister: React.FC = () => {
         setStep('account');
     };
 
-    const handleAccountCreation = (e: React.FormEvent) => {
+    const handleAccountCreation = async (e: FormEvent) => {
         e.preventDefault();
         setError('');
 
@@ -61,7 +61,7 @@ const MemberRegister: React.FC = () => {
         }
 
         // Register member
-        const result = registerMember(cedula, username, password);
+        const result = await registerMember(cedula, username, password);
         if (!result.success) {
             setError(result.error || 'Error al crear la cuenta');
             return;

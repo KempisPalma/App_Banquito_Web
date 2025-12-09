@@ -79,8 +79,8 @@ const GeneralReport: React.FC = () => {
             if (m.aliases && m.aliases.length > 0) {
                 return m.aliases.map(alias => ({ member: m, actionAlias: alias }));
             }
-            return [{ member: m, actionAlias: undefined }];
-        }) as { member: any; actionAlias: string | undefined }[];
+            return [{ member: m, actionAlias: '' }];
+        }) as { member: any; actionAlias: string }[];
     }, [members]);
 
     // 1. Savings per Identity (Weekly + Monthly Fees)
@@ -183,7 +183,7 @@ const GeneralReport: React.FC = () => {
     });
 
     const grandTotalSavings = reportData.reduce((acc: number, curr: any) => acc + curr.savings.total, 0);
-    const grandTotalDistributed = reportData.reduce((acc: number, curr: any) => acc + curr.totalReceive, 0);
+
 
     // Cash on Hand: Total Savings - Money Lent Out - Money Spent on Activities + Activity Revenue (Revenue is already in Banquito? No, revenue comes in. Investment goes out.)
     // Actually simpler: Cash = (Savings + Loan Interest + Activity Revenue) - (Loan Principal Outstanding + Activity Investment)
@@ -357,20 +357,7 @@ const GeneralReport: React.FC = () => {
                                 </motion.tr>
                             ))}
                         </tbody>
-                        <tfoot className="bg-slate-50/90 border-t border-slate-200 font-bold text-slate-700">
-                            <tr>
-                                <td className="px-6 py-4">TOTALES</td>
-                                <td className="px-6 py-4 text-right">${grandTotalSavings.toFixed(2)}</td>
-                                <td className="px-6 py-4 text-right text-emerald-700">
-                                    ${reportData.reduce((acc: number, curr: any) => acc + curr.loanShare, 0).toFixed(2)}
-                                </td>
-                                <td className="px-6 py-4 text-right text-purple-700">
-                                    ${reportData.reduce((acc: number, curr: any) => acc + curr.activityShare, 0).toFixed(2)}
-                                </td>
-                                <td className="px-6 py-4 text-right text-xl">${grandTotalDistributed.toFixed(2)}</td>
-                                <td></td>
-                            </tr>
-                        </tfoot>
+
                     </table>
                 </div>
             </Card>
