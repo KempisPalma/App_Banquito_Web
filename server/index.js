@@ -891,7 +891,12 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', db: 'supabase' });
 });
 
-// Start server
-app.listen(PORT, () => {
-    console.log(`🚀 Banquito API Server running on http://localhost:${PORT}`);
-});
+// Start server only if run directly (local dev)
+if (process.env.NODE_ENV !== 'production') {
+    app.listen(PORT, () => {
+        console.log(`🚀 Banquito API Server running on http://localhost:${PORT}`);
+    });
+}
+
+// Export for Vercel
+export default app;

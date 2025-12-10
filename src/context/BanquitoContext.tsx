@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import type { Member, WeeklyPayment, MonthlyFee, Activity, MemberActivity, Loan, User } from '../types';
 
-const API_BASE = 'http://localhost:3001/api';
+const API_BASE = '/api';
 
 interface BanquitoContextType {
     members: Member[];
