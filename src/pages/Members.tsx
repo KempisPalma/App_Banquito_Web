@@ -165,11 +165,7 @@ const Members: React.FC = () => {
                     <table className="w-full text-left">
                         <thead className="bg-slate-50/50 text-slate-500 font-semibold text-sm uppercase tracking-wider">
                             <tr>
-                                <th className="px-8 py-5">Socio / Acciones</th>
-                                <th className="px-6 py-5">Cédula</th>
-                                <th className="px-6 py-5">Contacto</th>
-                                <th className="px-6 py-5">Fecha Ingreso</th>
-                                <th className="px-6 py-5">Estado</th>
+
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">

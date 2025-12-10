@@ -144,10 +144,10 @@ const Dashboard: React.FC = () => {
             animate="show"
             className="space-y-8"
         >
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold text-slate-900">Resumen General</h1>
-                    <p className="text-slate-500 mt-1">Bienvenido de nuevo, aquí está lo que sucede hoy.</p>
+                    <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Resumen General</h1>
+                    <p className="text-slate-500 mt-1 text-sm md:text-base">Bienvenido de nuevo, aquí está lo que sucede hoy.</p>
                 </div>
                 <div className="flex space-x-2">
                     <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 text-sm font-medium flex items-center">

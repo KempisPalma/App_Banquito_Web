@@ -404,20 +404,20 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 )}
             >
                 {/* Top Bar */}
-                <header className="h-20 px-8 flex items-center justify-between">
-                    <div className="relative w-96">
-                        <div className="flex items-center bg-white/80 backdrop-blur-md px-4 py-2 rounded-2xl shadow-sm border border-slate-200/60">
-                            <Search className="text-slate-400 mr-3" size={20} />
+                <header className="h-20 px-4 md:px-8 flex items-center justify-between gap-4">
+                    <div className="relative flex-1 md:flex-none md:w-96">
+                        <div className="flex items-center bg-white/80 backdrop-blur-md px-4 py-2 rounded-2xl shadow-sm border border-slate-200/60 w-full">
+                            <Search className="text-slate-400 mr-3 flex-shrink-0" size={20} />
                             <input
                                 type="text"
-                                placeholder="Buscar socios, préstamos, actividades..."
+                                placeholder="Buscar..."
                                 value={searchQuery}
                                 onChange={(e) => {
                                     setSearchQuery(e.target.value);
                                     setIsSearchOpen(e.target.value.length > 0);
                                 }}
                                 onFocus={() => setIsSearchOpen(searchQuery.length > 0)}
-                                className="bg-transparent border-none outline-none text-slate-700 placeholder-slate-400 w-full"
+                                className="bg-transparent border-none outline-none text-slate-700 placeholder-slate-400 w-full min-w-0"
                             />
                         </div>
 
@@ -586,7 +586,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                     )}
                 </AnimatePresence>
 
-                <main className="flex-1 overflow-auto px-6 pb-6">
+                <main className="flex-1 overflow-auto px-4 md:px-6 pb-6">
                     {children}
                 </main>
             </motion.div>
