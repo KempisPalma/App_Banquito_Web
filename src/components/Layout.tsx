@@ -23,7 +23,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         { path: '/activities', label: 'Actividades', icon: Gift, permission: null, visibleForSocio: true },
         { path: '/loans', label: 'Préstamos', icon: CreditCard, permission: null, visibleForSocio: true },
         { path: '/report', label: 'Reporte', icon: FileText, permission: 'view_reports', visibleForSocio: false },
-        { path: '/users', label: 'Usuarios', icon: Shield, permission: 'admin', visibleForSocio: false },
+        { path: '/admin/users', label: 'Usuarios', icon: Shield, permission: 'admin', visibleForSocio: false },
     ];
 
     // Filter nav items based on user role and permissions

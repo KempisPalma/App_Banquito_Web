@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { v4 as uuidv4 } from 'uuid';
-import db from './database.js';
+import { supabase } from './supabase.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -10,586 +10,885 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
+// Helper for error handling
+const handleError = (res, error) => {
+    console.error('API Error:', error);
+    res.status(500).json({ success: false, error: error.message || 'Internal server error' });
+};
+
 // ==================== AUTH ROUTES ====================
 
 // Login
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
     const { username, password } = req.body;
-    const user = db.prepare('SELECT * FROM users WHERE username = ? AND password = ? AND active = 1').get(username, password);
-    if (user) {
-        user.permissions = JSON.parse(user.permissions || '[]');
+    try {
+        const { data: user, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('username', username)
+            .eq('password', password) // Note: In production use hashed passwords and comparing hashes
+            .eq('active', true)
+            .single();
+
+        if (error || !user) {
+            return res.status(401).json({ success: false, error: 'Credenciales inválidas' });
+        }
+
+        // Fix JSON fields if strings (Supabase sometimes returns objects, sometimes strings depending on client)
+        // Usually Supabase returns objects for JSONB.
+        if (typeof user.permissions === 'string') {
+            try { user.permissions = JSON.parse(user.permissions); } catch (e) { user.permissions = []; }
+        }
+
         res.json({ success: true, user });
-    } else {
-        res.status(401).json({ success: false, error: 'Credenciales inválidas' });
+    } catch (err) {
+        handleError(res, err);
     }
 });
 
 // Register member
-app.post('/api/auth/register', (req, res) => {
+app.post('/api/auth/register', async (req, res) => {
     const { cedula, username, password } = req.body;
 
-    const member = db.prepare('SELECT * FROM members WHERE cedula = ?').get(cedula);
-    if (!member) {
-        return res.status(400).json({ success: false, error: 'No se encontró un socio registrado con esta cédula' });
+    try {
+        const { data: member, error: memberError } = await supabase
+            .from('members')
+            .select('*')
+            .eq('cedula', cedula)
+            .single();
+
+        if (memberError || !member) {
+            return res.status(400).json({ success: false, error: 'No se encontró un socio registrado con esta cédula' });
+        }
+
+        // Check if user exists for this member
+        const { data: existingUserForMember } = await supabase
+            .from('users')
+            .select('id')
+            .eq('member_id', member.id)
+            .maybeSingle();
+
+        if (existingUserForMember) {
+            return res.status(400).json({ success: false, error: 'Este socio ya tiene una cuenta creada' });
+        }
+
+        // Check username
+        const { data: existingUsername } = await supabase
+            .from('users')
+            .select('id')
+            .eq('username', username)
+            .maybeSingle();
+
+        if (existingUsername) {
+            return res.status(400).json({ success: false, error: 'Este nombre de usuario ya está en uso' });
+        }
+
+        const id = uuidv4();
+        const { error: insertError } = await supabase
+            .from('users')
+            .insert({
+                id,
+                username,
+                password,
+                name: member.name,
+                role: 'socio',
+                member_id: member.id,
+                permissions: [],
+                active: true
+            });
+
+        if (insertError) throw insertError;
+
+        res.json({ success: true });
+    } catch (err) {
+        handleError(res, err);
     }
-
-    const existingUserForMember = db.prepare('SELECT * FROM users WHERE member_id = ?').get(member.id);
-    if (existingUserForMember) {
-        return res.status(400).json({ success: false, error: 'Este socio ya tiene una cuenta creada' });
-    }
-
-    const existingUsername = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
-    if (existingUsername) {
-        return res.status(400).json({ success: false, error: 'Este nombre de usuario ya está en uso' });
-    }
-
-    const id = uuidv4();
-    db.prepare(`
-        INSERT INTO users (id, username, password, name, role, member_id, permissions, active)
-        VALUES (?, ?, ?, ?, 'socio', ?, '[]', 1)
-    `).run(id, username, password, member.name, member.id);
-
-    res.json({ success: true });
 });
 
 // ==================== USER ROUTES ====================
 
-app.get('/api/users', (req, res) => {
-    const users = db.prepare('SELECT * FROM users').all();
-    users.forEach(u => u.permissions = JSON.parse(u.permissions || '[]'));
-    res.json(users);
+app.get('/api/users', async (req, res) => {
+    try {
+        const { data: users, error } = await supabase.from('users').select('*');
+        if (error) throw error;
+
+        // Ensure permissions are proper objects (Supabase does this automatically for JSONB usually)
+        users.forEach(u => {
+            if (typeof u.permissions === 'string') {
+                try { u.permissions = JSON.parse(u.permissions); } catch (e) { u.permissions = []; }
+            }
+        });
+
+        res.json(users);
+    } catch (err) {
+        handleError(res, err);
+    }
 });
 
-app.post('/api/users', (req, res) => {
+app.post('/api/users', async (req, res) => {
     const { username, password, name, role, memberId, permissions, active } = req.body;
     const id = uuidv4();
-    db.prepare(`
-        INSERT INTO users (id, username, password, name, role, member_id, permissions, active)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, username, password, name, role, memberId || null, JSON.stringify(permissions || []), active ? 1 : 0);
-    res.json({ id, username, password, name, role, memberId, permissions, active });
+    try {
+        const { error } = await supabase
+            .from('users')
+            .insert({
+                id,
+                username,
+                password,
+                name,
+                role,
+                member_id: memberId || null,
+                permissions: permissions || [],
+                active: active ? true : false
+            });
+
+        if (error) throw error;
+        res.json({ id, username, password, name, role, memberId, permissions, active });
+    } catch (err) {
+        handleError(res, err);
+    }
 });
 
-app.put('/api/users/:id', (req, res) => {
+app.put('/api/users/:id', async (req, res) => {
     const { id } = req.params;
     const { username, password, name, role, memberId, permissions, active } = req.body;
-    db.prepare(`
-        UPDATE users SET username = ?, password = ?, name = ?, role = ?, member_id = ?, permissions = ?, active = ?
-        WHERE id = ?
-    `).run(username, password, name, role, memberId || null, JSON.stringify(permissions || []), active ? 1 : 0, id);
-    res.json({ success: true });
+    try {
+        const { error } = await supabase
+            .from('users')
+            .update({
+                username,
+                password,
+                name,
+                role,
+                member_id: memberId || null,
+                permissions: permissions || [],
+                active: active ? true : false
+            })
+            .eq('id', id);
+
+        if (error) throw error;
+        res.json({ success: true });
+    } catch (err) {
+        handleError(res, err);
+    }
 });
 
-app.delete('/api/users/:id', (req, res) => {
-    db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
-    res.json({ success: true });
+app.delete('/api/users/:id', async (req, res) => {
+    try {
+        const { error } = await supabase.from('users').delete().eq('id', req.params.id);
+        if (error) throw error;
+        res.json({ success: true });
+    } catch (err) {
+        handleError(res, err);
+    }
 });
 
 // ==================== USER SETTINGS ROUTES ====================
 
-app.get('/api/settings/:userId', (req, res) => {
-    const settings = db.prepare('SELECT setting_key, setting_value FROM user_settings WHERE user_id = ?').all(req.params.userId);
-    const result = {};
-    settings.forEach(s => result[s.setting_key] = s.setting_value);
-    res.json(result);
+app.get('/api/settings/:userId', async (req, res) => {
+    try {
+        const { data: settings, error } = await supabase
+            .from('user_settings')
+            .select('setting_key, setting_value')
+            .eq('user_id', req.params.userId);
+
+        if (error) throw error;
+
+        const result = {};
+        settings.forEach(s => result[s.setting_key] = s.setting_value);
+        res.json(result);
+    } catch (err) {
+        handleError(res, err);
+    }
 });
 
-app.put('/api/settings/:userId', (req, res) => {
+app.put('/api/settings/:userId', async (req, res) => {
     const { userId } = req.params;
-    const settings = req.body; // { key: value, key2: value2 }
+    const settings = req.body;
 
-    Object.entries(settings).forEach(([key, value]) => {
-        db.prepare(`
-            INSERT INTO user_settings (id, user_id, setting_key, setting_value)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(user_id, setting_key) DO UPDATE SET setting_value = ?
-        `).run(uuidv4(), userId, key, value, value);
-    });
+    try {
+        const upserts = Object.entries(settings).map(([key, value]) => ({
+            user_id: userId,
+            setting_key: key,
+            setting_value: value
+        }));
 
-    res.json({ success: true });
+        // Upsert needs to know the constraint to match on. 
+        // Supabase upsert: if primary key or unique constraint matches.
+        // We have UNIQUE(user_id, setting_key).
+        if (upserts.length > 0) {
+            const { error } = await supabase
+                .from('user_settings')
+                .upsert(upserts, { onConflict: 'user_id, setting_key' });
+
+            if (error) throw error;
+        }
+
+        res.json({ success: true });
+    } catch (err) {
+        handleError(res, err);
+    }
 });
 
 // ==================== MEMBER ROUTES ====================
 
-app.get('/api/members', (req, res) => {
-    const members = db.prepare('SELECT * FROM members').all();
-    members.forEach(m => m.aliases = JSON.parse(m.aliases || '[]'));
-    res.json(members);
+app.get('/api/members', async (req, res) => {
+    try {
+        const { data: members, error } = await supabase.from('members').select('*');
+        if (error) throw error;
+
+        members.forEach(m => {
+            if (typeof m.aliases === 'string') {
+                try { m.aliases = JSON.parse(m.aliases); } catch (e) { m.aliases = []; }
+            }
+        });
+        res.json(members);
+    } catch (err) {
+        handleError(res, err);
+    }
 });
 
-app.post('/api/members', (req, res) => {
+app.post('/api/members', async (req, res) => {
     const { name, cedula, aliases, phone, active } = req.body;
     const id = uuidv4();
     const joinedDate = new Date().toISOString();
 
-    db.prepare(`
-        INSERT INTO members (id, name, cedula, aliases, phone, active, joined_date)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(id, name, cedula || null, JSON.stringify(aliases || []), phone || null, active ? 1 : 0, joinedDate);
+    try {
+        // Insert Member
+        const { error } = await supabase
+            .from('members')
+            .insert({
+                id,
+                name,
+                cedula: cedula || null,
+                aliases: aliases || [],
+                phone: phone || null,
+                active: active ? true : false,
+                joined_date: joinedDate
+            });
 
-    // Create activity records for new member
-    const activities = db.prepare('SELECT id FROM activities').all();
-    const identities = (aliases && aliases.length > 0)
-        ? aliases.map(alias => ({ memberId: id, actionAlias: alias }))
-        : [{ memberId: id, actionAlias: null }];
+        if (error) throw error;
 
-    activities.forEach(activity => {
-        identities.forEach(identity => {
-            db.prepare(`
-                INSERT INTO member_activities (id, activity_id, member_id, action_alias, tickets_sold, tickets_returned, amount_paid, fully_paid)
-                VALUES (?, ?, ?, ?, 0, 0, 0, 0)
-            `).run(uuidv4(), activity.id, id, identity.actionAlias);
-        });
-    });
+        // Initialize Activities for new member
+        const { data: activities } = await supabase.from('activities').select('id');
 
-    res.json({ id, name, cedula, aliases, phone, active, joinedDate });
+        if (activities && activities.length > 0) {
+            const identities = (aliases && aliases.length > 0)
+                ? aliases.map(alias => ({ memberId: id, actionAlias: alias }))
+                : [{ memberId: id, actionAlias: null }];
+
+            const memberActivities = [];
+            activities.forEach(activity => {
+                identities.forEach(identity => {
+                    memberActivities.push({
+                        id: uuidv4(),
+                        activity_id: activity.id,
+                        member_id: id,
+                        action_alias: identity.actionAlias,
+                        tickets_sold: 0,
+                        tickets_returned: 0,
+                        amount_paid: 0,
+                        fully_paid: false
+                    });
+                });
+            });
+
+            if (memberActivities.length > 0) {
+                await supabase.from('member_activities').insert(memberActivities);
+            }
+        }
+
+        res.json({ id, name, cedula, aliases, phone, active, joinedDate });
+    } catch (err) {
+        handleError(res, err);
+    }
 });
 
-app.put('/api/members/:id', (req, res) => {
+app.put('/api/members/:id', async (req, res) => {
     const { id } = req.params;
     const { name, cedula, aliases, phone, active } = req.body;
-    db.prepare(`
-        UPDATE members SET name = ?, cedula = ?, aliases = ?, phone = ?, active = ?
-        WHERE id = ?
-    `).run(name, cedula || null, JSON.stringify(aliases || []), phone || null, active ? 1 : 0, id);
-    res.json({ success: true });
+    try {
+        const { error } = await supabase
+            .from('members')
+            .update({
+                name,
+                cedula: cedula || null,
+                aliases: aliases || [],
+                phone: phone || null,
+                active: active ? true : false
+            })
+            .eq('id', id);
+
+        if (error) throw error;
+        res.json({ success: true });
+    } catch (err) {
+        handleError(res, err);
+    }
 });
 
-app.delete('/api/members/:id', (req, res) => {
-    db.prepare('DELETE FROM members WHERE id = ?').run(req.params.id);
-    res.json({ success: true });
+app.delete('/api/members/:id', async (req, res) => {
+    try {
+        const { error } = await supabase.from('members').delete().eq('id', req.params.id);
+        if (error) throw error;
+        res.json({ success: true });
+    } catch (err) {
+        handleError(res, err);
+    }
 });
 
 // ==================== WEEKLY PAYMENTS ROUTES ====================
 
-app.get('/api/payments/weekly', (req, res) => {
-    const payments = db.prepare('SELECT * FROM weekly_payments').all();
-    res.json(payments.map(p => ({
-        id: p.id,
-        memberId: p.member_id,
-        actionAlias: p.action_alias,
-        year: p.year,
-        month: p.month,
-        week: p.week,
-        amount: p.amount,
-        date: p.date
-    })));
+app.get('/api/payments/weekly', async (req, res) => {
+    try {
+        const { data: payments, error } = await supabase.from('weekly_payments').select('*');
+        if (error) throw error;
+
+        res.json(payments.map(p => ({
+            id: p.id,
+            memberId: p.member_id,
+            actionAlias: p.action_alias,
+            year: p.year,
+            month: p.month,
+            week: p.week,
+            amount: parseFloat(p.amount), // Ensure number
+            date: p.date
+        })));
+    } catch (err) {
+        handleError(res, err);
+    }
 });
 
-app.post('/api/payments/weekly', (req, res) => {
+app.post('/api/payments/weekly', async (req, res) => {
     const { memberId, actionAlias, year, month, week, amount } = req.body;
 
-    // Check if exists and update or insert
-    const existing = db.prepare(`
-        SELECT id FROM weekly_payments 
-        WHERE member_id = ? AND (action_alias = ? OR (action_alias IS NULL AND ? IS NULL)) AND year = ? AND month = ? AND week = ?
-    `).get(memberId, actionAlias, actionAlias, year, month, week);
+    try {
+        // Attempt insert, check if exists via unique constraint logic in logic or upsert
+        // Since we want to toggle between insert/update, explicit check is safer or upsert
 
-    if (existing) {
-        db.prepare('UPDATE weekly_payments SET amount = ?, date = ? WHERE id = ?')
-            .run(amount, new Date().toISOString(), existing.id);
-        res.json({ id: existing.id, updated: true });
-    } else {
-        const id = uuidv4();
-        db.prepare(`
-            INSERT INTO weekly_payments (id, member_id, action_alias, year, month, week, amount, date)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(id, memberId, actionAlias || null, year, month, week, amount, new Date().toISOString());
-        res.json({ id, created: true });
+        // Let's use upsert with ON CONFLICT logic if supabase supports checking "member_id, action_alias, year, month, week"
+        // But action_alias can be NULL. Unique constraints with NULLs in Postgres are tricky (NULL != NULL).
+        // However, Supabase (Postgres 15+) supports NULLs not distinct in unique indexes if defined that way.
+        // Our schema: UNIQUE(member_id, action_alias, year, month, week). By default NULLs are distinct.
+        // So multiple rows with NULL action_alias could exist if we aren't careful? 
+        // Standard SQL: UNIQUE allows multiple NULLs.
+        // In our case, we probably want only one.
+
+        // Strategy: Query first.
+        let query = supabase
+            .from('weekly_payments')
+            .select('id')
+            .eq('member_id', memberId)
+            .eq('year', year)
+            .eq('month', month)
+            .eq('week', week);
+
+        if (actionAlias) {
+            query = query.eq('action_alias', actionAlias);
+        } else {
+            query = query.is('action_alias', null);
+        }
+
+        const { data: existing } = await query.maybeSingle();
+
+        if (existing) {
+            const { error } = await supabase
+                .from('weekly_payments')
+                .update({ amount, date: new Date().toISOString() })
+                .eq('id', existing.id);
+            if (error) throw error;
+            res.json({ id: existing.id, updated: true });
+        } else {
+            const id = uuidv4();
+            const { error } = await supabase
+                .from('weekly_payments')
+                .insert({
+                    id,
+                    member_id: memberId,
+                    action_alias: actionAlias || null,
+                    year,
+                    month,
+                    week,
+                    amount,
+                    date: new Date().toISOString()
+                });
+            if (error) throw error;
+            res.json({ id, created: true });
+        }
+    } catch (err) {
+        handleError(res, err);
     }
 });
 
 // ==================== MONTHLY FEES ROUTES ====================
 
-app.get('/api/payments/monthly', (req, res) => {
-    const fees = db.prepare('SELECT * FROM monthly_fees').all();
-    res.json(fees.map(f => ({
-        id: f.id,
-        memberId: f.member_id,
-        actionAlias: f.action_alias,
-        year: f.year,
-        month: f.month,
-        amount: f.amount,
-        date: f.date
-    })));
+app.get('/api/payments/monthly', async (req, res) => {
+    try {
+        const { data: fees, error } = await supabase.from('monthly_fees').select('*');
+        if (error) throw error;
+
+        res.json(fees.map(f => ({
+            id: f.id,
+            memberId: f.member_id,
+            actionAlias: f.action_alias,
+            year: f.year,
+            month: f.month,
+            amount: parseFloat(f.amount),
+            date: f.date
+        })));
+    } catch (err) {
+        handleError(res, err);
+    }
 });
 
-app.post('/api/payments/monthly', (req, res) => {
+app.post('/api/payments/monthly', async (req, res) => {
     const { memberId, actionAlias, year, month, amount } = req.body;
 
-    const existing = db.prepare(`
-        SELECT id FROM monthly_fees 
-        WHERE member_id = ? AND (action_alias = ? OR (action_alias IS NULL AND ? IS NULL)) AND year = ? AND month = ?
-    `).get(memberId, actionAlias, actionAlias, year, month);
+    try {
+        let query = supabase
+            .from('monthly_fees')
+            .select('id')
+            .eq('member_id', memberId)
+            .eq('year', year)
+            .eq('month', month);
 
-    if (existing) {
-        db.prepare('UPDATE monthly_fees SET amount = ?, date = ? WHERE id = ?')
-            .run(amount, new Date().toISOString(), existing.id);
-        res.json({ id: existing.id, updated: true });
-    } else {
-        const id = uuidv4();
-        db.prepare(`
-            INSERT INTO monthly_fees (id, member_id, action_alias, year, month, amount, date)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run(id, memberId, actionAlias || null, year, month, amount, new Date().toISOString());
-        res.json({ id, created: true });
+        if (actionAlias) {
+            query = query.eq('action_alias', actionAlias);
+        } else {
+            query = query.is('action_alias', null);
+        }
+
+        const { data: existing } = await query.maybeSingle();
+
+        if (existing) {
+            const { error } = await supabase
+                .from('monthly_fees')
+                .update({ amount, date: new Date().toISOString() })
+                .eq('id', existing.id);
+            if (error) throw error;
+            res.json({ id: existing.id, updated: true });
+        } else {
+            const id = uuidv4();
+            const { error } = await supabase
+                .from('monthly_fees')
+                .insert({
+                    id,
+                    member_id: memberId,
+                    action_alias: actionAlias || null,
+                    year,
+                    month,
+                    amount,
+                    date: new Date().toISOString()
+                });
+            if (error) throw error;
+            res.json({ id, created: true });
+        }
+    } catch (err) {
+        handleError(res, err);
     }
 });
 
 // ==================== ACTIVITIES ROUTES ====================
 
-app.get('/api/activities', (req, res) => {
-    const activities = db.prepare('SELECT * FROM activities').all();
-    res.json(activities.map(a => ({
-        id: a.id,
-        name: a.name,
-        date: a.date,
-        description: a.description,
-        ticketPrice: a.ticket_price,
-        totalTicketsPerMember: a.total_tickets_per_member,
-        investment: a.investment
-    })));
+app.get('/api/activities', async (req, res) => {
+    try {
+        const { data: activities, error } = await supabase.from('activities').select('*');
+        if (error) throw error;
+
+        res.json(activities.map(a => ({
+            id: a.id,
+            name: a.name,
+            date: a.date,
+            description: a.description,
+            ticketPrice: parseFloat(a.ticket_price),
+            totalTicketsPerMember: a.total_tickets_per_member,
+            investment: a.investment ? parseFloat(a.investment) : null
+        })));
+    } catch (err) {
+        handleError(res, err);
+    }
 });
 
-app.post('/api/activities', (req, res) => {
+app.post('/api/activities', async (req, res) => {
     const { name, date, description, ticketPrice, totalTicketsPerMember, investment } = req.body;
     const id = uuidv4();
 
-    db.prepare(`
-        INSERT INTO activities (id, name, date, description, ticket_price, total_tickets_per_member, investment)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(id, name, date, description || null, ticketPrice, totalTicketsPerMember || 10, investment || null);
+    try {
+        const { error } = await supabase
+            .from('activities')
+            .insert({
+                id,
+                name,
+                date,
+                description: description || null,
+                ticket_price: ticketPrice,
+                total_tickets_per_member: totalTicketsPerMember || 10,
+                investment: investment || null
+            });
 
-    // Initialize member participation
-    const members = db.prepare('SELECT id, aliases FROM members').all();
-    members.forEach(member => {
-        const aliases = JSON.parse(member.aliases || '[]');
-        const identities = aliases.length > 0
-            ? aliases.map(alias => ({ memberId: member.id, actionAlias: alias }))
-            : [{ memberId: member.id, actionAlias: null }];
+        if (error) throw error;
 
-        identities.forEach(identity => {
-            db.prepare(`
-                INSERT INTO member_activities (id, activity_id, member_id, action_alias, tickets_sold, tickets_returned, amount_paid, fully_paid)
-                VALUES (?, ?, ?, ?, 0, 0, 0, 0)
-            `).run(uuidv4(), id, identity.memberId, identity.actionAlias);
-        });
-    });
+        // Initialize member participation
+        const { data: members } = await supabase.from('members').select('id, aliases');
 
-    res.json({ id, name, date, description, ticketPrice, totalTicketsPerMember, investment });
+        if (members && members.length > 0) {
+            const memberActivities = [];
+            members.forEach(member => {
+                let aliases = member.aliases || [];
+                if (typeof aliases === 'string') {
+                    try { aliases = JSON.parse(aliases); } catch (e) { aliases = []; }
+                }
+
+                const identities = aliases.length > 0
+                    ? aliases.map(alias => ({ memberId: member.id, actionAlias: alias }))
+                    : [{ memberId: member.id, actionAlias: null }];
+
+                identities.forEach(identity => {
+                    memberActivities.push({
+                        id: uuidv4(),
+                        activity_id: id,
+                        member_id: member.id,
+                        action_alias: identity.actionAlias,
+                        tickets_sold: 0,
+                        tickets_returned: 0,
+                        amount_paid: 0,
+                        fully_paid: false
+                    });
+                });
+            });
+
+            if (memberActivities.length > 0) {
+                await supabase.from('member_activities').insert(memberActivities);
+            }
+        }
+
+        res.json({ id, name, date, description, ticketPrice, totalTicketsPerMember, investment });
+    } catch (err) {
+        handleError(res, err);
+    }
 });
 
-app.put('/api/activities/:id', (req, res) => {
+app.put('/api/activities/:id', async (req, res) => {
     const { id } = req.params;
     const { name, date, description, ticketPrice, totalTicketsPerMember, investment } = req.body;
-    db.prepare(`
-        UPDATE activities SET name = ?, date = ?, description = ?, ticket_price = ?, total_tickets_per_member = ?, investment = ?
-        WHERE id = ?
-    `).run(name, date, description || null, ticketPrice, totalTicketsPerMember || 10, investment || null, id);
-    res.json({ success: true });
+    try {
+        const { error } = await supabase
+            .from('activities')
+            .update({
+                name,
+                date,
+                description: description || null,
+                ticket_price: ticketPrice,
+                total_tickets_per_member: totalTicketsPerMember || 10,
+                investment: investment || null
+            })
+            .eq('id', id);
+
+        if (error) throw error;
+        res.json({ success: true });
+    } catch (err) {
+        handleError(res, err);
+    }
 });
 
-app.delete('/api/activities/:id', (req, res) => {
-    db.prepare('DELETE FROM member_activities WHERE activity_id = ?').run(req.params.id);
-    db.prepare('DELETE FROM activities WHERE id = ?').run(req.params.id);
-    res.json({ success: true });
+app.delete('/api/activities/:id', async (req, res) => {
+    try {
+        // Cascade delete should handle member_activities, but let's be safe if not configured in DB (my schema said ON DELETE CASCADE)
+        // Check schema.sql: "activity_id TEXT REFERENCES activities(id) ON DELETE CASCADE" -> Yes.
+        const { error } = await supabase.from('activities').delete().eq('id', req.params.id);
+        if (error) throw error;
+        res.json({ success: true });
+    } catch (err) {
+        handleError(res, err);
+    }
 });
 
 // ==================== MEMBER ACTIVITIES ROUTES ====================
 
-app.get('/api/member-activities', (req, res) => {
-    const mas = db.prepare('SELECT * FROM member_activities').all();
-    res.json(mas.map(ma => ({
-        id: ma.id,
-        activityId: ma.activity_id,
-        memberId: ma.member_id,
-        actionAlias: ma.action_alias,
-        ticketsSold: ma.tickets_sold,
-        ticketsReturned: ma.tickets_returned,
-        amountPaid: ma.amount_paid,
-        fullyPaid: ma.fully_paid === 1
-    })));
+app.get('/api/member-activities', async (req, res) => {
+    try {
+        const { data: mas, error } = await supabase.from('member_activities').select('*');
+        if (error) throw error;
+
+        res.json(mas.map(ma => ({
+            id: ma.id,
+            activityId: ma.activity_id,
+            memberId: ma.member_id,
+            actionAlias: ma.action_alias,
+            ticketsSold: ma.tickets_sold,
+            ticketsReturned: ma.tickets_returned,
+            amountPaid: parseFloat(ma.amount_paid),
+            fullyPaid: ma.fully_paid
+        })));
+    } catch (err) {
+        handleError(res, err);
+    }
 });
 
-app.put('/api/member-activities/:id', (req, res) => {
+app.put('/api/member-activities/:id', async (req, res) => {
     const { id } = req.params;
     const { ticketsSold, ticketsReturned, amountPaid, fullyPaid } = req.body;
-    db.prepare(`
-        UPDATE member_activities SET tickets_sold = ?, tickets_returned = ?, amount_paid = ?, fully_paid = ?
-        WHERE id = ?
-    `).run(ticketsSold, ticketsReturned, amountPaid, fullyPaid ? 1 : 0, id);
-    res.json({ success: true });
+    try {
+        const { error } = await supabase
+            .from('member_activities')
+            .update({
+                tickets_sold: ticketsSold,
+                tickets_returned: ticketsReturned,
+                amount_paid: amountPaid,
+                fully_paid: fullyPaid ? true : false
+            })
+            .eq('id', id);
+
+        if (error) throw error;
+        res.json({ success: true });
+    } catch (err) {
+        handleError(res, err);
+    }
 });
 
 // ==================== LOANS ROUTES ====================
 
-app.get('/api/loans', (req, res) => {
-    const loans = db.prepare('SELECT * FROM loans').all();
-    const result = loans.map(l => {
-        const payments = db.prepare('SELECT * FROM loan_payments WHERE loan_id = ?').all(l.id);
-        return {
+app.get('/api/loans', async (req, res) => {
+    try {
+        const { data: loans, error } = await supabase
+            .from('loans')
+            .select(`
+                *,
+                loan_payments (*)
+            `);
+
+        if (error) throw error;
+
+        const result = loans.map(l => ({
             id: l.id,
             memberId: l.member_id,
             actionAlias: l.action_alias,
             clientName: l.client_name,
             borrowerType: l.borrower_type,
-            amount: l.amount,
-            interestRate: l.interest_rate,
+            amount: parseFloat(l.amount),
+            interestRate: parseFloat(l.interest_rate),
             startDate: l.start_date,
             endDate: l.end_date,
             status: l.status,
-            // Accounting
-            pendingPrincipal: l.pending_principal !== null ? l.pending_principal : l.amount,
-            pendingInterest: l.pending_interest !== null ? l.pending_interest : 0,
+            pendingPrincipal: l.pending_principal !== null ? parseFloat(l.pending_principal) : parseFloat(l.amount),
+            pendingInterest: l.pending_interest !== null ? parseFloat(l.pending_interest) : 0,
             lastPaymentDate: l.last_payment_date,
             nextDueDate: l.next_due_date,
-            payments: payments.map(p => ({
+            payments: l.loan_payments ? l.loan_payments.map(p => ({
                 id: p.id,
                 loanId: p.loan_id,
-                amount: p.amount,
+                amount: parseFloat(p.amount),
                 paymentType: p.payment_type,
                 date: p.date
-            }))
-        };
-    });
-    res.json(result);
+            })) : []
+        }));
+
+        res.json(result);
+    } catch (err) {
+        handleError(res, err);
+    }
 });
 
-app.post('/api/loans', (req, res) => {
+app.post('/api/loans', async (req, res) => {
     const { memberId, actionAlias, clientName, borrowerType, amount, interestRate, startDate, endDate, status } = req.body;
     const id = uuidv4();
 
-    db.prepare(`
-        INSERT INTO loans (id, member_id, action_alias, client_name, borrower_type, amount, interest_rate, start_date, end_date, status, pending_principal, pending_interest, next_due_date)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, memberId || null, actionAlias || null, clientName || null, borrowerType, amount, interestRate, startDate, endDate, status || 'active', amount, 0, endDate); // Initial next_due_date = endDate (usually 1st month)
+    try {
+        const { error } = await supabase
+            .from('loans')
+            .insert({
+                id,
+                member_id: memberId || null,
+                action_alias: actionAlias || null,
+                client_name: clientName || null,
+                borrower_type: borrowerType,
+                amount,
+                interest_rate: interestRate,
+                start_date: startDate,
+                end_date: endDate,
+                status: status || 'active',
+                pending_principal: amount,
+                pending_interest: 0,
+                next_due_date: endDate
+            });
 
-    res.json({ id, memberId, actionAlias, clientName, borrowerType, amount, interestRate, startDate, endDate, status: status || 'active', payments: [] });
+        if (error) throw error;
+        res.json({ id, memberId, actionAlias, clientName, borrowerType, amount, interestRate, startDate, endDate, status: status || 'active', payments: [] });
+    } catch (err) {
+        handleError(res, err);
+    }
 });
 
-app.put('/api/loans/:id', (req, res) => {
+app.put('/api/loans/:id', async (req, res) => {
     const { id } = req.params;
     const { memberId, actionAlias, clientName, borrowerType, amount, interestRate, startDate, endDate, status } = req.body;
-    db.prepare(`
-        UPDATE loans SET member_id = ?, action_alias = ?, client_name = ?, borrower_type = ?, amount = ?, interest_rate = ?, start_date = ?, end_date = ?, status = ?
-        WHERE id = ?
-    `).run(memberId || null, actionAlias || null, clientName || null, borrowerType, amount, interestRate, startDate, endDate, status, id);
-    res.json({ success: true });
+    try {
+        const { error } = await supabase
+            .from('loans')
+            .update({
+                member_id: memberId || null,
+                action_alias: actionAlias || null,
+                client_name: clientName || null,
+                borrower_type: borrowerType,
+                amount,
+                interest_rate: interestRate,
+                start_date: startDate,
+                end_date: endDate,
+                status
+            })
+            .eq('id', id);
+
+        if (error) throw error;
+        res.json({ success: true });
+    } catch (err) {
+        handleError(res, err);
+    }
 });
 
-app.delete('/api/loans/:id', (req, res) => {
-    db.prepare('DELETE FROM loan_payments WHERE loan_id = ?').run(req.params.id);
-    db.prepare('DELETE FROM loans WHERE id = ?').run(req.params.id);
-    res.json({ success: true });
+app.delete('/api/loans/:id', async (req, res) => {
+    try {
+        const { error } = await supabase.from('loans').delete().eq('id', req.params.id);
+        if (error) throw error;
+        res.json({ success: true });
+    } catch (err) {
+        handleError(res, err);
+    }
 });
 
 // Loan payments
-app.post('/api/loans/:id/payments', (req, res) => {
+app.post('/api/loans/:id/payments', async (req, res) => {
     const { id } = req.params;
     const { amount, paymentType, date } = req.body;
     const paymentId = uuidv4();
 
-    db.prepare(`
-        INSERT INTO loan_payments (id, loan_id, amount, payment_type, date)
-        VALUES (?, ?, ?, ?, ?)
-    `).run(paymentId, id, amount, paymentType, date || new Date().toISOString());
+    try {
+        // 1. Get current loan state
+        const { data: loan, error: fetchError } = await supabase
+            .from('loans')
+            .select('*')
+            .eq('id', id)
+            .single();
 
-    // --- Advanced Logic Update ---
-    // 1. Get current loan state
-    const loan = db.prepare('SELECT * FROM loans WHERE id = ?').get(id);
-    let { pending_principal, pending_interest, interest_rate } = loan;
+        if (fetchError || !loan) throw new Error('Loan not found');
 
-    // Initialize if null (migration case)
-    if (pending_principal === null) pending_principal = loan.amount;
-    if (pending_interest === null) pending_interest = 0;
+        let pending_principal = parseFloat(loan.pending_principal) || parseFloat(loan.amount);
+        let pending_interest = parseFloat(loan.pending_interest) || 0;
 
-    // 2. Apply payment
-    if (paymentType === 'principal') {
-        pending_principal -= amount;
-        if (pending_principal < 0) pending_principal = 0;
-    } else {
-        pending_interest -= amount;
-        if (pending_interest < 0) pending_interest = 0;
+        // 2. Insert Payment
+        const { error: insertError } = await supabase
+            .from('loan_payments')
+            .insert({
+                id: paymentId,
+                loan_id: id,
+                amount,
+                payment_type: paymentType,
+                date: date || new Date().toISOString()
+            });
+
+        if (insertError) throw insertError;
+
+        // 3. Update Calculations
+        if (paymentType === 'principal') {
+            pending_principal -= amount;
+            if (pending_principal < 0) pending_principal = 0;
+        } else {
+            pending_interest -= amount;
+            if (pending_interest < 0) pending_interest = 0;
+        }
+
+        let newStatus = loan.status;
+        if (pending_principal <= 0.01) {
+            newStatus = 'paid';
+        }
+
+        const paymentDateObj = new Date(date || new Date().toISOString());
+        const nextDueDateObj = new Date(paymentDateObj);
+        nextDueDateObj.setMonth(nextDueDateObj.getMonth() + 1);
+        const nextDueDate = nextDueDateObj.toISOString();
+
+        const { error: updateError } = await supabase
+            .from('loans')
+            .update({
+                pending_principal,
+                pending_interest,
+                last_payment_date: date || new Date().toISOString(),
+                next_due_date: nextDueDate,
+                status: newStatus
+            })
+            .eq('id', id);
+
+        if (updateError) throw updateError;
+
+        res.json({ id: paymentId, loanId: id, amount, paymentType, date: date || new Date().toISOString() });
+    } catch (err) {
+        handleError(res, err);
     }
-
-    // 3. Update status (if fully paid)
-    // Basic check: if principal is 0, is it paid? 
-    // Usually we check if principal is 0. Interest might still be pending or accrued?
-    // Let's stick to simple logic: if pending_principal <= 0.01 (float tolerance), status = paid
-    let newStatus = loan.status;
-    if (pending_principal <= 0.01) {
-        newStatus = 'paid';
-    }
-
-    // 4. Update Dates
-    // "Nueva fecha de vencimiento será 1 mes desde la fecha del último abono"
-    const paymentDateObj = new Date(date || new Date().toISOString());
-    const nextDueDateObj = new Date(paymentDateObj);
-    nextDueDateObj.setMonth(nextDueDateObj.getMonth() + 1);
-    const nextDueDate = nextDueDateObj.toISOString();
-
-    db.prepare(`
-        UPDATE loans 
-        SET pending_principal = ?, 
-            pending_interest = ?, 
-            last_payment_date = ?, 
-            next_due_date = ?,
-            status = ?
-        WHERE id = ?
-    `).run(pending_principal, pending_interest, date || new Date().toISOString(), nextDueDate, newStatus, id);
-
-    res.json({ id: paymentId, loanId: id, amount, paymentType, date: date || new Date().toISOString() });
 });
 
-app.put('/api/loans/:loanId/payments/:paymentId', (req, res) => {
+app.put('/api/loans/:loanId/payments/:paymentId', async (req, res) => {
     const { loanId, paymentId } = req.params;
     const { amount, paymentType, date } = req.body;
 
-    db.prepare('UPDATE loan_payments SET amount = ?, payment_type = ?, date = ? WHERE id = ?')
-        .run(amount, paymentType, date, paymentId);
+    try {
+        const { error: updatePaymentError } = await supabase
+            .from('loan_payments')
+            .update({ amount, payment_type: paymentType, date })
+            .eq('id', paymentId);
 
-    // Recalculate loan status
-    const loan = db.prepare('SELECT * FROM loans WHERE id = ?').get(loanId);
-    const payments = db.prepare('SELECT * FROM loan_payments WHERE loan_id = ?').all(loanId);
-    const totalPaid = payments.reduce((acc, p) => acc + p.amount, 0);
-    const totalDue = loan.amount + (loan.amount * loan.interest_rate / 100);
+        if (updatePaymentError) throw updatePaymentError;
 
-    db.prepare('UPDATE loans SET status = ? WHERE id = ?').run(totalPaid >= totalDue ? 'paid' : 'active', loanId);
+        // Recalculate Logic (Simplified: Check total vs dues)
+        // Ideally we should replay all payments, but that is complex.
+        // We will just do the status check based on total paid vs total due (initial)
 
-    res.json({ success: true });
+        const { data: loan } = await supabase.from('loans').select('*').eq('id', loanId).single();
+        const { data: payments } = await supabase.from('loan_payments').select('*').eq('loan_id', loanId);
+
+        const totalPaid = payments.reduce((acc, p) => acc + parseFloat(p.amount), 0);
+        const totalDue = parseFloat(loan.amount) + (parseFloat(loan.amount) * parseFloat(loan.interest_rate) / 100);
+
+        const { error: updateLoanError } = await supabase
+            .from('loans')
+            .update({ status: totalPaid >= totalDue ? 'paid' : 'active' })
+            .eq('id', loanId);
+
+        if (updateLoanError) throw updateLoanError;
+
+        res.json({ success: true });
+    } catch (err) {
+        handleError(res, err);
+    }
 });
 
-app.delete('/api/loans/:loanId/payments/:paymentId', (req, res) => {
+app.delete('/api/loans/:loanId/payments/:paymentId', async (req, res) => {
     const { loanId, paymentId } = req.params;
 
-    db.prepare('DELETE FROM loan_payments WHERE id = ?').run(paymentId);
+    try {
+        const { error: deleteError } = await supabase.from('loan_payments').delete().eq('id', paymentId);
+        if (deleteError) throw deleteError;
 
-    // Recalculate loan status
-    const loan = db.prepare('SELECT * FROM loans WHERE id = ?').get(loanId);
-    const payments = db.prepare('SELECT * FROM loan_payments WHERE loan_id = ?').all(loanId);
-    const totalPaid = payments.reduce((acc, p) => acc + p.amount, 0);
-    const totalDue = loan.amount + (loan.amount * loan.interest_rate / 100);
+        // Recalculate status similar to put
+        const { data: loan } = await supabase.from('loans').select('*').eq('id', loanId).single();
+        const { data: payments } = await supabase.from('loan_payments').select('*').eq('loan_id', loanId);
 
-    db.prepare('UPDATE loans SET status = ? WHERE id = ?').run(totalPaid >= totalDue ? 'paid' : 'active', loanId);
+        const totalPaid = payments.reduce((acc, p) => acc + parseFloat(p.amount), 0);
+        const totalDue = parseFloat(loan.amount) + (parseFloat(loan.amount) * parseFloat(loan.interest_rate) / 100);
 
-    res.json({ success: true });
+        const { error: updateLoanError } = await supabase
+            .from('loans')
+            .update({ status: totalPaid >= totalDue ? 'paid' : 'active' })
+            .eq('id', loanId);
+
+        if (updateLoanError) throw updateLoanError;
+
+        res.json({ success: true });
+    } catch (err) {
+        handleError(res, err);
+    }
 });
 
-// ==================== DATA MIGRATION (one-time endpoint to import from localStorage) ====================
-
-app.post('/api/migrate', (req, res) => {
-    const { members, weeklyPayments, monthlyFees, activities, memberActivities, loans, users } = req.body;
-
-    try {
-        // Import members
-        if (members) {
-            members.forEach(m => {
-                const existing = db.prepare('SELECT id FROM members WHERE id = ?').get(m.id);
-                if (!existing) {
-                    db.prepare(`
-                        INSERT INTO members (id, name, cedula, aliases, phone, active, joined_date)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                    `).run(m.id, m.name, m.cedula || null, JSON.stringify(m.aliases || []), m.phone || null, m.active ? 1 : 0, m.joinedDate);
-                }
-            });
-        }
-
-        // Import users
-        if (users) {
-            users.forEach(u => {
-                const existing = db.prepare('SELECT id FROM users WHERE id = ?').get(u.id);
-                if (!existing) {
-                    db.prepare(`
-                        INSERT INTO users (id, username, password, name, role, member_id, permissions, active)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    `).run(u.id, u.username, u.password, u.name, u.role, u.memberId || null, JSON.stringify(u.permissions || []), u.active ? 1 : 0);
-                }
-            });
-        }
-
-        // Import weekly payments
-        if (weeklyPayments) {
-            weeklyPayments.forEach(p => {
-                const existing = db.prepare('SELECT id FROM weekly_payments WHERE id = ?').get(p.id);
-                if (!existing) {
-                    db.prepare(`
-                        INSERT INTO weekly_payments (id, member_id, action_alias, year, month, week, amount, date)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    `).run(p.id, p.memberId, p.actionAlias || null, p.year, p.month, p.week, p.amount, p.date);
-                }
-            });
-        }
-
-        // Import monthly fees
-        if (monthlyFees) {
-            monthlyFees.forEach(f => {
-                const existing = db.prepare('SELECT id FROM monthly_fees WHERE id = ?').get(f.id);
-                if (!existing) {
-                    db.prepare(`
-                        INSERT INTO monthly_fees (id, member_id, action_alias, year, month, amount, date)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                    `).run(f.id, f.memberId, f.actionAlias || null, f.year, f.month, f.amount, f.date);
-                }
-            });
-        }
-
-        // Import activities
-        if (activities) {
-            activities.forEach(a => {
-                const existing = db.prepare('SELECT id FROM activities WHERE id = ?').get(a.id);
-                if (!existing) {
-                    db.prepare(`
-                        INSERT INTO activities (id, name, date, description, ticket_price, total_tickets_per_member, investment)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                    `).run(a.id, a.name, a.date, a.description || null, a.ticketPrice, a.totalTicketsPerMember || 10, a.investment || null);
-                }
-            });
-        }
-
-        // Import member activities
-        if (memberActivities) {
-            memberActivities.forEach(ma => {
-                const existing = db.prepare('SELECT id FROM member_activities WHERE id = ?').get(ma.id);
-                if (!existing) {
-                    db.prepare(`
-                        INSERT INTO member_activities (id, activity_id, member_id, action_alias, tickets_sold, tickets_returned, amount_paid, fully_paid)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    `).run(ma.id, ma.activityId, ma.memberId, ma.actionAlias || null, ma.ticketsSold, ma.ticketsReturned, ma.amountPaid, ma.fullyPaid ? 1 : 0);
-                }
-            });
-        }
-
-        // Import loans
-        if (loans) {
-            loans.forEach(l => {
-                const existing = db.prepare('SELECT id FROM loans WHERE id = ?').get(l.id);
-                if (!existing) {
-                    db.prepare(`
-                        INSERT INTO loans (id, member_id, action_alias, client_name, borrower_type, amount, interest_rate, start_date, end_date, status)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    `).run(l.id, l.memberId || null, l.actionAlias || null, l.clientName || null, l.borrowerType, l.amount, l.interestRate, l.startDate, l.endDate, l.status);
-
-                    // Import loan payments
-                    if (l.payments) {
-                        l.payments.forEach(p => {
-                            const pExists = db.prepare('SELECT id FROM loan_payments WHERE id = ?').get(p.id);
-                            if (!pExists) {
-                                db.prepare(`
-                                    INSERT INTO loan_payments (id, loan_id, amount, payment_type, date)
-                                    VALUES (?, ?, ?, ?, ?)
-                                `).run(p.id, l.id, p.amount, p.paymentType, p.date);
-                            }
-                        });
-                    }
-                }
-            });
-        }
-
-        res.json({ success: true, message: 'Datos migrados correctamente' });
-    } catch (error) {
-        console.error('Migration error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
+// Remove old migrate endpoint or replace with a status check
+app.get('/api/health', (req, res) => {
+    res.json({ status: 'ok', db: 'supabase' });
 });
 
 // Start server
