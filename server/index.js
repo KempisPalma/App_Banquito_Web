@@ -887,8 +887,30 @@ app.delete('/api/loans/:loanId/payments/:paymentId', async (req, res) => {
 });
 
 // Remove old migrate endpoint or replace with a status check
-app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', db: 'supabase' });
+app.get('/api/health', async (req, res) => {
+    try {
+        // Test database connection
+        const { count, error } = await supabase.from('users').select('*', { count: 'exact', head: true });
+
+        res.json({
+            status: 'ok',
+            environment: process.env.NODE_ENV,
+            supabase_config: {
+                url_configured: !!process.env.SUPABASE_URL,
+                key_configured: !!process.env.SUPABASE_KEY,
+                key_start: process.env.SUPABASE_KEY ? process.env.SUPABASE_KEY.substring(0, 5) + '...' : 'none'
+            },
+            db_connection: error ? 'failed' : 'success',
+            user_count: count,
+            db_error: error ? error.message : null
+        });
+    } catch (err) {
+        res.status(500).json({
+            status: 'server_error',
+            message: err.message,
+            stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+        });
+    }
 });
 
 // Start server only if run directly (local dev)
