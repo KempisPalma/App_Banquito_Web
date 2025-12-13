@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useBanquito } from '../context/BanquitoContext';
-import { Plus, Gift, DollarSign, Calendar, Ticket, CheckCircle, AlertCircle, Trash2, Edit2, AlertTriangle } from 'lucide-react';
+import { Plus, Gift, DollarSign, Calendar, Ticket, CheckCircle, AlertCircle, Trash2, Edit2, AlertTriangle, ArrowUpDown } from 'lucide-react';
 import Modal from '../components/Modal';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -41,6 +41,11 @@ const Activities: React.FC = () => {
     const [selectedYear, setSelectedYear] = useState(getInitialYear);
     const [selectedMonth, setSelectedMonth] = useState(getInitialMonth);
     const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
+    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+    const toggleSort = () => {
+        setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
+    };
 
     // Persist filters to localStorage
     React.useEffect(() => {
@@ -134,10 +139,10 @@ const Activities: React.FC = () => {
         }).sort((a, b) => {
             const dateA = new Date(a.date).getTime();
             const dateB = new Date(b.date).getTime();
-            return dateB - dateA; // Descending order: Newest first
+            return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
         });
         setOrderedActivities(filtered);
-    }, [activities, selectedYear, selectedMonth]);
+    }, [activities, selectedYear, selectedMonth, sortOrder]);
 
     const filteredActivities = orderedActivities; // Use the ordered state for rendering
 
@@ -187,6 +192,15 @@ const Activities: React.FC = () => {
                             <option key={index} value={index}>{month}</option>
                         ))}
                     </select>
+
+                    <button
+                        onClick={toggleSort}
+                        className="p-2.5 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 hover:border-slate-300 transition-all text-slate-500 hover:text-purple-600"
+                        title={`Ordenar por fecha (${sortOrder === 'desc' ? 'Más antiguas' : 'Más recientes'})`}
+                    >
+                        <ArrowUpDown size={20} />
+                    </button>
+
                     {currentUser?.role !== 'socio' && (
                         <Button
                             onClick={() => {
@@ -239,6 +253,8 @@ const Activities: React.FC = () => {
                                     key={activity.id}
                                     value={activity}
                                     onClick={() => setSelectedActivityId(activity.id)}
+                                    whileHover={{ scale: 1.02 }}
+                                    whileTap={{ scale: 0.98 }}
                                     whileDrag={{
                                         scale: 1.05,
                                         boxShadow: "0px 5px 15px rgba(0,0,0,0.15)",
