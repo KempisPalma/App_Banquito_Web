@@ -1,14 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useBanquito } from '../context/BanquitoContext';
 import { Plus, Gift, DollarSign, Calendar, Ticket, CheckCircle, AlertCircle, Trash2, Edit2, AlertTriangle } from 'lucide-react';
 import Modal from '../components/Modal';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import { clsx } from 'clsx';
 
 const Activities: React.FC = () => {
     const { activities, memberActivities, members, addActivity, deleteActivity, updateMemberActivity, updateActivity, currentUser } = useBanquito();
+    // ... existing state ...
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false);
     const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
@@ -123,14 +124,22 @@ const Activities: React.FC = () => {
         }
     };
 
-    const filteredActivities = activities.filter(a => {
-        const d = new Date(a.date);
-        return d.getFullYear() === selectedYear && (selectedMonth === -1 || d.getMonth() === selectedMonth);
-    }).sort((a, b) => {
-        const dateA = new Date(a.date).getTime();
-        const dateB = new Date(b.date).getTime();
-        return dateB - dateA; // Descending order: Newest first
-    });
+    // Filter and Sort activities
+    const [orderedActivities, setOrderedActivities] = useState<typeof activities>([]);
+
+    useEffect(() => {
+        const filtered = activities.filter(a => {
+            const d = new Date(a.date);
+            return d.getFullYear() === selectedYear && (selectedMonth === -1 || d.getMonth() === selectedMonth);
+        }).sort((a, b) => {
+            const dateA = new Date(a.date).getTime();
+            const dateB = new Date(b.date).getTime();
+            return dateB - dateA; // Descending order: Newest first
+        });
+        setOrderedActivities(filtered);
+    }, [activities, selectedYear, selectedMonth]);
+
+    const filteredActivities = orderedActivities; // Use the ordered state for rendering
 
     const selectedActivity = filteredActivities.find(a => a.id === selectedActivityId) || filteredActivities[0];
     const currentMemberActivities = memberActivities.filter(ma => ma.activityId === selectedActivity?.id);
@@ -210,7 +219,13 @@ const Activities: React.FC = () => {
                 </Card>
             ) : (
                 <>
-                    <div className="flex space-x-4 overflow-x-auto pb-4 scrollbar-hide">
+                    <Reorder.Group
+                        axis="x"
+                        values={orderedActivities}
+                        onReorder={setOrderedActivities}
+                        layoutScroll
+                        className="flex space-x-4 overflow-x-auto pb-4 scrollbar-hide px-1"
+                    >
                         {filteredActivities.map(activity => {
                             const actRevenue = memberActivities
                                 .filter(ma => ma.activityId === activity.id)
@@ -220,13 +235,18 @@ const Activities: React.FC = () => {
                                 .every(ma => (ma.ticketsSold + ma.ticketsReturned) === activity.totalTicketsPerMember);
 
                             return (
-                                <motion.button
+                                <Reorder.Item
                                     key={activity.id}
+                                    value={activity}
                                     onClick={() => setSelectedActivityId(activity.id)}
-                                    whileHover={{ scale: 1.02 }}
-                                    whileTap={{ scale: 0.98 }}
+                                    whileDrag={{
+                                        scale: 1.05,
+                                        boxShadow: "0px 5px 15px rgba(0,0,0,0.15)",
+                                        cursor: "grabbing"
+                                    }}
+                                    transition={{ duration: 0.2 }}
                                     className={clsx(
-                                        "flex-shrink-0 px-6 py-4 rounded-2xl border transition-all duration-300 text-left min-w-[240px]",
+                                        "flex-shrink-0 px-6 py-4 rounded-2xl border transition-colors duration-200 text-left min-w-[240px] cursor-grab active:cursor-grabbing",
                                         selectedActivity?.id === activity.id
                                             ? "border-purple-500 bg-purple-600 text-white shadow-lg shadow-purple-500/30"
                                             : "border-slate-200 bg-white text-slate-600 hover:border-purple-300 hover:shadow-md"
@@ -235,7 +255,7 @@ const Activities: React.FC = () => {
                                     <div className="flex justify-between items-start">
                                         <div className="w-full">
                                             <div className="flex justify-between items-start w-full">
-                                                <div className="font-bold text-lg mb-1 truncate pr-2">{activity.name}</div>
+                                                <div className="font-bold text-lg mb-1 truncate pr-2 select-none">{activity.name}</div>
                                                 {isCompleted ? (
                                                     <span className={clsx("text-[10px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider", selectedActivity?.id === activity.id ? "bg-emerald-400/20 text-emerald-100" : "bg-emerald-100 text-emerald-700")}>
                                                         Finalizada
@@ -250,15 +270,20 @@ const Activities: React.FC = () => {
                                                 <Calendar size={12} className="mr-1.5" />
                                                 {new Date(activity.date).toLocaleDateString()}
                                             </div>
-                                            <div className={clsx("text-xs font-medium", selectedActivity?.id === activity.id ? "text-purple-200" : "text-slate-500")}>
-                                                Recaudado: ${actRevenue.toFixed(2)}
+                                            <div className="flex flex-col gap-1 mt-2">
+                                                <div className={clsx("text-xs font-medium", selectedActivity?.id === activity.id ? "text-purple-200" : "text-slate-500")}>
+                                                    Recaudado: ${actRevenue.toFixed(2)}
+                                                </div>
+                                                <div className={clsx("text-xs font-bold", selectedActivity?.id === activity.id ? "text-emerald-300" : "text-emerald-600")}>
+                                                    Ganancia: ${(actRevenue - (activity.investment || 0)).toFixed(2)}
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
-                                </motion.button>
+                                </Reorder.Item>
                             )
                         })}
-                    </div>
+                    </Reorder.Group>
 
                     <AnimatePresence mode="wait">
                         <motion.div
@@ -326,7 +351,12 @@ const Activities: React.FC = () => {
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                         <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
                                             <div className="text-sm text-slate-500 mb-1">Recaudación Total</div>
-                                            <div className="text-2xl font-black text-slate-800">${totalRevenue.toFixed(2)}</div>
+                                            <div className="flex items-baseline gap-3">
+                                                <div className="text-2xl font-black text-slate-800">${totalRevenue.toFixed(2)}</div>
+                                                <div className="text-sm font-semibold text-slate-400 border-l pl-3 ml-1 border-slate-200">
+                                                    Esperado: ${(currentMemberActivities.length * selectedActivity.ticketPrice * selectedActivity.totalTicketsPerMember).toFixed(2)}
+                                                </div>
+                                            </div>
                                             <div className="text-xs text-emerald-600 font-medium mt-1">Ingresos brutos</div>
                                         </div>
                                         <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
@@ -395,7 +425,7 @@ const Activities: React.FC = () => {
                                                                 <input
                                                                     type="number"
                                                                     min="0"
-                                                                    max={selectedActivity.totalTicketsPerMember}
+                                                                    // max={selectedActivity.totalTicketsPerMember} // Removed to allow selling extra tickets
                                                                     value={ma.ticketsSold}
                                                                     onChange={(e) => handleTicketUpdate(ma.id, 'ticketsSold', Number(e.target.value))}
                                                                     className="w-20 text-center bg-white border border-slate-200 rounded-lg py-1.5 focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all font-medium text-slate-700"
@@ -421,6 +451,11 @@ const Activities: React.FC = () => {
                                                                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
                                                                     <CheckCircle size={12} className="mr-1" />
                                                                     Completado
+                                                                </span>
+                                                            ) : totalToPay > (selectedActivity.totalTicketsPerMember * selectedActivity.ticketPrice) ? (
+                                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800">
+                                                                    <CheckCircle size={12} className="mr-1" />
+                                                                    Superó Meta
                                                                 </span>
                                                             ) : currentUser?.role === 'socio' && currentUser.memberId === ma.memberId && totalToPay < (selectedActivity.totalTicketsPerMember * selectedActivity.ticketPrice) ? (
                                                                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
