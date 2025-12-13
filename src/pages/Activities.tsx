@@ -20,9 +20,35 @@ const Activities: React.FC = () => {
         investment: 0
     });
 
-    const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-    const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+    // Initialize state from localStorage if available
+    const getInitialYear = () => {
+        if (currentUser?.id) {
+            const saved = localStorage.getItem(`activities_selected_year_${currentUser.id}`);
+            return saved ? parseInt(saved) : new Date().getFullYear();
+        }
+        return new Date().getFullYear();
+    };
+
+    const getInitialMonth = () => {
+        if (currentUser?.id) {
+            const saved = localStorage.getItem(`activities_selected_month_${currentUser.id}`);
+            return saved ? parseInt(saved) : new Date().getMonth();
+        }
+        return new Date().getMonth();
+    };
+
+    const [selectedYear, setSelectedYear] = useState(getInitialYear);
+    const [selectedMonth, setSelectedMonth] = useState(getInitialMonth);
     const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
+
+    // Persist filters to localStorage
+    React.useEffect(() => {
+        if (currentUser?.id) {
+            localStorage.setItem(`activities_selected_year_${currentUser.id}`, selectedYear.toString());
+            localStorage.setItem(`activities_selected_month_${currentUser.id}`, selectedMonth.toString());
+        }
+    }, [selectedYear, selectedMonth, currentUser]);
+
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -118,7 +144,8 @@ const Activities: React.FC = () => {
         (ma.ticketsSold + ma.ticketsReturned) === (selectedActivity?.totalTicketsPerMember || 0)
     );
 
-    const yearOptions = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
+    // Generate years: Current year - 2 up to Current year + 5
+    const yearOptions = Array.from({ length: 8 }, (_, i) => new Date().getFullYear() - 2 + i);
     const monthNames = [
         "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
         "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"

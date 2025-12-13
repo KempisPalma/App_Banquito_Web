@@ -250,12 +250,23 @@ app.get('/api/members', async (req, res) => {
 
 app.post('/api/members', async (req, res) => {
     const { name, cedula, aliases, phone, active } = req.body;
+
+    // LOGGING ADDED FOR DEBUGGING
+    console.log('------------------------------------------------');
+    console.log('📌 [POST /api/members] Solicitud de creación de miembro');
+    console.log('   Nombre:', name);
+    console.log('   Cédula:', cedula);
+    console.log('   Origin:', req.headers['origin'] || 'Unknown');
+    console.log('   User-Agent:', req.headers['user-agent']);
+    console.log('------------------------------------------------');
+
     const id = uuidv4();
     const joinedDate = new Date().toISOString();
 
     try {
         // Insert Member
         const { error } = await supabase
+
             .from('members')
             .insert({
                 id,
@@ -328,8 +339,44 @@ app.put('/api/members/:id', async (req, res) => {
 
 app.delete('/api/members/:id', async (req, res) => {
     try {
-        const { error } = await supabase.from('members').delete().eq('id', req.params.id);
+        const { id } = req.params;
+
+        // 1. Delete Weekly Payments
+        const { error: err1 } = await supabase.from('weekly_payments').delete().eq('member_id', id);
+        if (err1) console.error('Error deleting weekly_payments:', err1);
+
+        // 2. Delete Monthly Fees
+        const { error: err2 } = await supabase.from('monthly_fees').delete().eq('member_id', id);
+        if (err2) console.error('Error deleting monthly_fees:', err2);
+
+        // 3. Delete Member Activities
+        const { error: err3 } = await supabase.from('member_activities').delete().eq('member_id', id);
+        if (err3) console.error('Error deleting member_activities:', err3);
+
+        // 4. Delete Loans and Loan Payments
+        // First get loans to delete their payments
+        const { data: loans } = await supabase.from('loans').select('id').eq('member_id', id);
+        if (loans && loans.length > 0) {
+            const loanIds = loans.map(l => l.id);
+            if (loanIds.length > 0) {
+                const { error: errPay } = await supabase.from('loan_payments').delete().in('loan_id', loanIds);
+                if (errPay) console.error('Error deleting loan_payments:', errPay);
+            }
+            const { error: errLoan } = await supabase.from('loans').delete().eq('member_id', id);
+            if (errLoan) console.error('Error deleting loans:', errLoan);
+        }
+
+        // 5. Delete Users
+        const { error: errUser } = await supabase.from('users').delete().eq('member_id', id);
+        if (errUser) console.error('Error deleting users:', errUser);
+
+        // 6. Delete Settings? (user_settings depends on users, cascading there might work if users deleted, but good to be safe if user table has cascade on delete for settings, otherwise manual)
+        // Check schema: user_settings REFERENCES users(id) ON DELETE CASCADE. So deleting users is enough.
+
+        // 7. Finally Delete Member
+        const { error } = await supabase.from('members').delete().eq('id', id);
         if (error) throw error;
+
         res.json({ success: true });
     } catch (err) {
         handleError(res, err);

@@ -229,10 +229,15 @@ export const BanquitoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const deleteMember = async (id: string) => {
         try {
-            await fetch(`${API_BASE}/members/${id}`, { method: 'DELETE' });
+            const res = await fetch(`${API_BASE}/members/${id}`, { method: 'DELETE' });
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.error || 'Error deleting member');
+            }
             setMembers(members.filter(m => m.id !== id));
         } catch (error) {
             console.error('Error deleting member:', error);
+            alert('No se pudo eliminar el socio. Intenta recargar la página.');
         }
     };
 
