@@ -19,11 +19,11 @@ const Login: React.FC = () => {
         e.preventDefault();
         setError('');
 
-        const success = await login(username, password);
-        if (success) {
+        const result = await login(username, password);
+        if (result.success) {
             navigate('/');
         } else {
-            setError('Usuario o contraseña incorrectos');
+            setError(result.error || 'Usuario o contraseña incorrectos');
         }
     };
 

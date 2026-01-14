@@ -17,7 +17,7 @@ interface BanquitoContextType {
     currentUser: User | null;
 
     // Auth Actions
-    login: (username: string, password: string) => Promise<boolean>;
+    login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
     logout: () => void;
     registerMember: (cedula: string, username: string, password: string) => Promise<{ success: boolean; error?: string }>;
     addUser: (user: Omit<User, 'id'>) => Promise<void>;
@@ -109,7 +109,7 @@ export const BanquitoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }, [currentUser]);
 
     // ==================== AUTH ====================
-    const login = async (username: string, password: string): Promise<boolean> => {
+    const login = async (username: string, password: string): Promise<{ success: boolean; error?: string }> => {
         try {
             const res = await fetch(`${API_BASE}/auth/login`, {
                 method: 'POST',
@@ -119,11 +119,12 @@ export const BanquitoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             const data = await res.json();
             if (data.success) {
                 setCurrentUser(data.user);
-                return true;
+                return { success: true };
             }
-            return false;
-        } catch {
-            return false;
+            return { success: false, error: data.error || 'Credenciales inválidas' };
+        } catch (err) {
+            console.error('Login error:', err);
+            return { success: false, error: 'Error de conexión con el servidor. Asegúrate de que el backend esté ejecutándose.' };
         }
     };
 
@@ -167,17 +168,25 @@ export const BanquitoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             if (!userToUpdate) return;
 
             const updated = { ...userToUpdate, ...data };
-            await fetch(`${API_BASE}/users/${id}`, {
+            const res = await fetch(`${API_BASE}/users/${id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(updated)
             });
+
+            if (!res.ok) {
+                const errData = await res.json();
+                throw new Error(errData.error || 'Error al actualizar usuario');
+            }
+
             setUsers(users.map(u => u.id === id ? updated : u));
             if (currentUser?.id === id) {
                 setCurrentUser(updated);
             }
         } catch (error) {
             console.error('Error updating user:', error);
+            alert(`Error: ${(error as Error).message}`);
+            throw error; // Re-throw so caller knows it failed
         }
     };
 
@@ -222,6 +231,10 @@ export const BanquitoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 body: JSON.stringify(updated)
             });
             setMembers(members.map(m => m.id === id ? updated : m));
+
+            // Reload member activities to reflect any new actions added
+            const maRes = await fetch(`${API_BASE}/member-activities`);
+            if (maRes.ok) setMemberActivities(await maRes.json());
         } catch (error) {
             console.error('Error updating member:', error);
         }
@@ -235,6 +248,9 @@ export const BanquitoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 throw new Error(err.error || 'Error deleting member');
             }
             setMembers(members.filter(m => m.id !== id));
+            // Reload member activities to update activity statuses
+            const maRes = await fetch(`${API_BASE}/member-activities`);
+            if (maRes.ok) setMemberActivities(await maRes.json());
         } catch (error) {
             console.error('Error deleting member:', error);
             alert('No se pudo eliminar el socio. Intenta recargar la página.');
@@ -472,7 +488,7 @@ export const BanquitoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const importBackup = async (data: any): Promise<boolean> => {
         try {
-            const res = await fetch(`${API_BASE}/migrate`, {
+            const res = await fetch(`${API_BASE}/admin/import`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)

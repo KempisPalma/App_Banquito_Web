@@ -230,7 +230,7 @@ const Members: React.FC = () => {
                                         <td className="px-6 py-5">
                                             <div className="flex items-center text-slate-600">
                                                 <Calendar size={16} className="mr-2 text-slate-400" />
-                                                {new Date(member.joinedDate).toLocaleDateString()}
+                                                {member.joinedDate ? new Date(member.joinedDate).toLocaleDateString() : 'Sin fecha'}
                                             </div>
                                         </td>
                                         <td className="px-6 py-5 relative">
@@ -382,9 +382,18 @@ const Members: React.FC = () => {
                         <input
                             type="tel"
                             value={formData.phone}
-                            onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                            onChange={(e) => {
+                                // Only allow numbers
+                                const value = e.target.value.replace(/\D/g, '');
+                                // Limit to 10 digits
+                                if (value.length <= 10) {
+                                    setFormData({ ...formData, phone: value });
+                                }
+                            }}
                             className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all"
                             placeholder="Ej. 0991234567"
+                            maxLength={10}
+                            inputMode="numeric"
                         />
                     </div>
 

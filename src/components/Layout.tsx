@@ -1,20 +1,24 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, DollarSign, Gift, CreditCard, Menu, X, Bell, Search, ChevronLeft, ChevronRight, Clock, Settings, Download, Upload, LogOut, Shield, FileText } from 'lucide-react';
+import { LayoutDashboard, Users, DollarSign, Gift, CreditCard, Menu, X, Bell, Search, ChevronLeft, ChevronRight, Clock, Settings, Download, Upload, LogOut, Shield, FileText, Info, AlertTriangle, CheckCircle, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { clsx } from 'clsx';
+import clsx from 'clsx';
 import { useBanquito } from '../context/BanquitoContext';
+import { useNotifications } from '../hooks/useNotifications';
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const location = useLocation();
     const navigate = useNavigate();
     const { loans, members, currentUser, logout, activities, weeklyPayments, monthlyFees, memberActivities, importBackup } = useBanquito();
+    const { notifications, dueLoanNotifications, markAsRead, clearAll } = useNotifications();
+
     const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
     const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState(false);
     const [isNotificationOpen, setIsNotificationOpen] = React.useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
     const [searchQuery, setSearchQuery] = React.useState('');
     const [isSearchOpen, setIsSearchOpen] = React.useState(false);
+    const [isProfileModalOpen, setIsProfileModalOpen] = React.useState(false);
 
     const navItems = [
         { path: '/', label: 'Dashboard', icon: LayoutDashboard, permission: null, visibleForSocio: true },
@@ -104,40 +108,33 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         setIsSearchOpen(false);
     };
 
-    // Calculate loan notifications
-    const loanNotifications = React.useMemo(() => {
-        const now = new Date();
-        let relevantLoans = loans.filter(loan => loan.status !== 'paid');
+    // Combine notifications
+    const allNotifications = React.useMemo(() => {
+        return [...dueLoanNotifications, ...notifications].sort((a, b) => {
+            // Sort by Date DESC
+            return new Date(b.date).getTime() - new Date(a.date).getTime();
+        });
+    }, [dueLoanNotifications, notifications]);
 
-        // If user is socio, only show their own loans
-        if (currentUser?.role === 'socio' && currentUser.memberId) {
-            relevantLoans = relevantLoans.filter(loan =>
-                loan.borrowerType === 'member' && loan.memberId === currentUser.memberId
-            );
+    const unreadCount = allNotifications.filter(n => !n.read).length;
+
+    const getNotificationIcon = (type: string) => {
+        switch (type) {
+            case 'error': return <AlertCircle size={16} className="text-white" />;
+            case 'warning': return <AlertTriangle size={16} className="text-white" />;
+            case 'success': return <CheckCircle size={16} className="text-white" />;
+            default: return <Info size={16} className="text-white" />;
         }
+    };
 
-        return relevantLoans
-            .map(loan => {
-                const endDate = new Date(loan.endDate);
-                const daysUntilDue = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-                const isOverdue = daysUntilDue < 0;
-                const isDueSoon = daysUntilDue > 0 && daysUntilDue <= 7;
-
-                if (isOverdue || isDueSoon) {
-                    const member = loan.borrowerType === 'member' ? members.find(m => m.id === loan.memberId) : null;
-                    const borrowerName = loan.borrowerType === 'member' ? (member?.name || 'Socio Desconocido') : loan.clientName;
-
-                    return {
-                        loanId: loan.id,
-                        message: `${borrowerName}: Préstamo ${isOverdue ? 'vencido' : 'vence pronto'} (${Math.abs(daysUntilDue)} días)`,
-                        type: isOverdue ? 'error' : 'warning',
-                        date: loan.endDate
-                    };
-                }
-                return null;
-            })
-            .filter(Boolean) as { loanId: string; message: string; type: 'error' | 'warning'; date: string }[];
-    }, [loans, members, currentUser]);
+    const getNotificationColor = (type: string) => {
+        switch (type) {
+            case 'error': return 'bg-red-500';
+            case 'warning': return 'bg-amber-500';
+            case 'success': return 'bg-green-500';
+            default: return 'bg-blue-500';
+        }
+    };
 
     const handleLogout = () => {
         logout();
@@ -193,12 +190,185 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         setIsSettingsOpen(false);
     };
 
+    // Profile Modal Component
+    const ProfileModal = ({ onClose }: { onClose: () => void }) => {
+        const { currentUser, members, updateMember } = useBanquito();
+        const linkedMember = currentUser?.role === 'socio' && currentUser.username
+            ? members.find(m => String(m.cedula) === String(currentUser.username))
+            : null;
+
+        const [formData, setFormData] = React.useState({
+            name: currentUser?.name || '',
+            phone: linkedMember?.phone || '',
+            username: currentUser?.username || '',
+            password: currentUser?.password || ''
+        });
+        const [showPassword, setShowPassword] = React.useState(false);
+        const [isSaving, setIsSaving] = React.useState(false);
+
+        const handleSave = async (e: React.FormEvent) => {
+            e.preventDefault();
+            if (!currentUser) return;
+            setIsSaving(true);
+
+            try {
+                // 1. Update User Record
+                const userRes = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/users/${currentUser.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        ...currentUser,
+                        name: formData.name,
+                        username: formData.username,
+                        password: formData.password
+                    })
+                });
+
+                if (!userRes.ok) throw new Error('Error al actualizar usuario');
+
+                // 2. Update Member Record (Phone) if linked
+                if (linkedMember && formData.phone !== linkedMember.phone) {
+                    await updateMember(linkedMember.id, {
+                        ...linkedMember,
+                        phone: formData.phone
+                    });
+                }
+
+                alert('Perfil actualizado correctamente. Por favor recarga la página para ver los cambios reflejados.');
+                onClose();
+                window.location.reload();
+            } catch (error) {
+                console.error(error);
+                alert('Error al guardar los cambios.');
+            } finally {
+                setIsSaving(false);
+            }
+        };
+
+        return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl"
+                >
+                    <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                        <h2 className="text-xl font-bold text-slate-800">Perfil de Usuario</h2>
+                        <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+                            <X size={20} className="text-slate-500" />
+                        </button>
+                    </div>
+
+                    <form onSubmit={handleSave} className="p-6 space-y-4">
+                        {/* Read-Only Info */}
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                                <label className="text-xs font-semibold text-slate-500 uppercase">Cédula</label>
+                                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-600 font-medium text-sm">
+                                    {linkedMember?.cedula || 'N/A'}
+                                </div>
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-xs font-semibold text-slate-500 uppercase">Rol</label>
+                                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-600 font-medium text-sm capitalize">
+                                    {currentUser?.role || 'Usuario'}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Editable Fields */}
+                        <div className="space-y-2">
+                            <label className="text-sm font-semibold text-slate-700">Nombre Completo</label>
+                            <div className="relative">
+                                <Users size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                <input
+                                    type="text"
+                                    value={formData.name}
+                                    onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                    className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none transition-all"
+                                    required
+                                />
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-sm font-semibold text-slate-700">Número Celular</label>
+                            <input
+                                type="text"
+                                value={formData.phone}
+                                onChange={e => {
+                                    const val = e.target.value.replace(/\D/g, '');
+                                    if (val.length <= 10) setFormData({ ...formData, phone: val });
+                                }}
+                                className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none transition-all"
+                                placeholder="099..."
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-sm font-semibold text-slate-700">Usuario</label>
+                            <input
+                                type="text"
+                                value={formData.username}
+                                onChange={e => setFormData({ ...formData, username: e.target.value })} // Careful with unique constraint, but API handles it
+                                className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none transition-all"
+                                required
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-sm font-semibold text-slate-700">Contraseña</label>
+                            <div className="relative">
+                                <input
+                                    type={showPassword ? "text" : "password"}
+                                    value={formData.password}
+                                    onChange={e => setFormData({ ...formData, password: e.target.value })}
+                                    className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none transition-all"
+                                    required
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-primary-600"
+                                >
+                                    {showPassword ? "Ocultar" : "Mostrar"}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="pt-4 flex gap-3">
+                            <button
+                                type="button"
+                                onClick={onClose}
+                                className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 font-semibold rounded-xl hover:bg-slate-200 transition-colors"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={isSaving}
+                                className="flex-1 px-4 py-2.5 bg-primary-600 text-white font-bold rounded-xl hover:bg-primary-700 transition-colors shadow-lg shadow-primary-500/30 disabled:opacity-50"
+                            >
+                                {isSaving ? 'Guardando...' : 'Guardar Cambios'}
+                            </button>
+                        </div>
+                    </form>
+                </motion.div>
+            </div>
+        );
+    };
+
     return (
         <div className="flex h-screen bg-slate-50 overflow-hidden font-sans text-slate-900">
             {/* Background Gradients */}
             <div className="absolute inset-0 bg-gradient-to-br from-primary-50 via-white to-purple-50 opacity-60" />
             <div className="absolute top-0 right-0 w-96 h-96 bg-primary-200 rounded-full filter blur-3xl opacity-20 animate-blob" />
             <div className="absolute bottom-0 left-0 w-96 h-96 bg-purple-200 rounded-full filter blur-3xl opacity-20 animate-blob animation-delay-2000" />
+
+            {/* Profile Modal */}
+            <AnimatePresence>
+                {isProfileModalOpen && <ProfileModal onClose={() => setIsProfileModalOpen(false)} />}
+            </AnimatePresence>
 
             {/* Desktop Sidebar */}
             <motion.aside
@@ -314,25 +484,27 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                     })}
                 </nav>
 
-                {/* User Profile Section */}
-                <div className={clsx(
-                    "mt-auto border-t border-slate-100 bg-slate-50/50",
-                    isSidebarCollapsed ? "p-4 flex justify-center" : "p-6"
-                )}>
+                {/* User Profile Section - Clickable */}
+                <div
+                    onClick={() => setIsProfileModalOpen(true)}
+                    className={clsx(
+                        "mt-auto border-t border-slate-100 bg-slate-50/50 cursor-pointer hover:bg-slate-100 transition-colors group",
+                        isSidebarCollapsed ? "p-4 flex justify-center" : "p-6"
+                    )}>
                     {currentUser && (
                         <div className={clsx("flex items-center", isSidebarCollapsed ? "justify-center" : "space-x-3")}>
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center text-white font-bold shadow-md">
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center text-white font-bold shadow-md group-hover:scale-105 transition-transform">
                                 {currentUser.username.charAt(0).toUpperCase()}
                             </div>
                             {!isSidebarCollapsed && (
                                 <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-bold text-slate-800 truncate">{currentUser.username}</p>
+                                    <p className="text-sm font-bold text-slate-800 truncate group-hover:text-primary-700 transition-colors">{currentUser.username}</p>
                                     <p className="text-xs text-slate-500 truncate capitalize">{currentUser.role}</p>
                                 </div>
                             )}
                             {!isSidebarCollapsed && (
                                 <button
-                                    onClick={handleLogout}
+                                    onClick={(e) => { e.stopPropagation(); handleLogout(); }}
                                     className="p-2 text-slate-400 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50"
                                     title="Cerrar Sesión"
                                 >
@@ -474,20 +646,22 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                                 className="p-3 bg-white/80 backdrop-blur-md rounded-xl shadow-sm border border-slate-200/60 text-slate-600 hover:text-primary-600 transition-colors relative"
                             >
                                 <Bell size={20} />
-                                {loanNotifications.length > 0 && (
+                                {unreadCount > 0 && (
                                     <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
                                 )}
                             </button>
                         </div>
 
-                        <div className="relative">
-                            <button
-                                onClick={() => setIsSettingsOpen(!isSettingsOpen)}
-                                className="p-3 bg-white/80 backdrop-blur-md rounded-xl shadow-sm border border-slate-200/60 text-slate-600 hover:text-primary-600 transition-colors"
-                            >
-                                <Settings size={20} />
-                            </button>
-                        </div>
+                        {currentUser && currentUser.role !== 'socio' && (
+                            <div className="relative">
+                                <button
+                                    onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+                                    className="p-3 bg-white/80 backdrop-blur-md rounded-xl shadow-sm border border-slate-200/60 text-slate-600 hover:text-primary-600 transition-colors"
+                                >
+                                    <Settings size={20} />
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </header>
 
@@ -521,7 +695,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                                     </button>
                                     <label className="w-full flex items-center px-4 py-3 rounded-xl text-slate-600 hover:bg-slate-50 hover:text-primary-600 transition-colors cursor-pointer">
                                         <Upload size={18} className="mr-3" />
-                                        Importar Datos
+                                        importar Datos
                                         <input type="file" accept=".json" onChange={handleImportData} className="hidden" />
                                     </label>
                                 </div>
@@ -545,35 +719,74 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                                 initial={{ opacity: 0, y: 10, scale: 0.95 }}
                                 animate={{ opacity: 1, y: 0, scale: 1 }}
                                 exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                                className="absolute top-20 right-24 w-80 bg-white rounded-2xl shadow-2xl border border-slate-100 z-50 overflow-hidden"
+                                className="absolute top-20 right-24 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-slate-100 z-50 overflow-hidden"
                             >
-                                <div className="p-4 border-b border-slate-100 flex justify-between items-center">
+                                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                                     <h3 className="font-bold text-slate-800">Notificaciones</h3>
-                                    <span className="bg-primary-100 text-primary-700 text-xs font-bold px-2 py-1 rounded-full">
-                                        {loanNotifications.length}
-                                    </span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="bg-primary-100 text-primary-700 text-xs font-bold px-2 py-1 rounded-full">
+                                            {unreadCount}
+                                        </span>
+                                        {allNotifications.length > 0 && (
+                                            <button
+                                                onClick={clearAll}
+                                                className="text-xs text-slate-400 hover:text-red-500 transition-colors"
+                                            >
+                                                Borrar todo
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
-                                <div className="max-h-80 overflow-y-auto">
-                                    {loanNotifications.length === 0 ? (
+                                <div className="max-h-[32rem] overflow-y-auto">
+                                    {allNotifications.length === 0 ? (
                                         <div className="p-8 text-center text-slate-400">
                                             <Bell size={32} className="mx-auto mb-3 opacity-50" />
                                             <p className="text-sm">No hay notificaciones nuevas</p>
                                         </div>
                                     ) : (
                                         <div className="divide-y divide-slate-50">
-                                            {loanNotifications.map((notification) => (
-                                                <div key={notification.loanId} className="p-4 hover:bg-slate-50 transition-colors">
-                                                    <div className="flex items-start">
+                                            {allNotifications.map((notification) => (
+                                                <div
+                                                    key={notification.id}
+                                                    onClick={() => !notification.read && markAsRead(notification.id)}
+                                                    className={clsx(
+                                                        "p-4 hover:bg-slate-50 transition-colors cursor-default relative",
+                                                        !notification.read ? "bg-primary-50/30" : ""
+                                                    )}
+                                                >
+                                                    <div className="flex items-start gap-4">
                                                         <div className={clsx(
-                                                            "mt-1 w-2 h-2 rounded-full flex-shrink-0",
-                                                            notification.type === 'error' ? "bg-red-500" : "bg-amber-500"
-                                                        )} />
-                                                        <div className="ml-3">
-                                                            <p className="text-sm text-slate-700 font-medium">{notification.message}</p>
-                                                            <p className="text-xs text-slate-400 mt-1 flex items-center">
+                                                            "w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm",
+                                                            getNotificationColor(notification.type)
+                                                        )}>
+                                                            {getNotificationIcon(notification.type)}
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex justify-between items-start mb-1">
+                                                                <h4 className="font-bold text-sm text-slate-800">{notification.title}</h4>
+                                                                {!notification.read && (
+                                                                    <span className="w-2 h-2 bg-primary-500 rounded-full"></span>
+                                                                )}
+                                                            </div>
+                                                            <p className="text-sm text-slate-600 leading-snug mb-2">{notification.message}</p>
+                                                            <p className="text-xs text-slate-400 flex items-center">
                                                                 <Clock size={10} className="mr-1" />
-                                                                {new Date(notification.date).toLocaleDateString()}
+                                                                {new Date(notification.date).toLocaleString()}
                                                             </p>
+
+                                                            {notification.link && (
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        markAsRead(notification.id);
+                                                                        navigate(notification.link!);
+                                                                        setIsNotificationOpen(false);
+                                                                    }}
+                                                                    className="mt-2 text-xs font-semibold text-primary-600 hover:text-primary-800 transition-colors flex items-center"
+                                                                >
+                                                                    Ver detalles <ChevronRight size={12} className="ml-1" />
+                                                                </button>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 </div>

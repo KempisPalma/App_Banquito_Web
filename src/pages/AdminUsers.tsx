@@ -23,6 +23,7 @@ const AdminUsers: React.FC = () => {
 
     const [formData, setFormData] = useState(initialFormState);
     const [cedulaStatus, setCedulaStatus] = useState<'none' | 'found' | 'not-found'>('none');
+    const [suggestions, setSuggestions] = useState<typeof members>([]);
 
     const permissionsList: { value: Permission; label: string }[] = [
         { value: 'manage_payments', label: 'Gestionar Pagos' },
@@ -37,17 +38,39 @@ const AdminUsers: React.FC = () => {
         e.preventDefault();
 
         // Find member by cedula if provided
-        const member = formData.cedula ? members.find(m => m.cedula === formData.cedula) : null;
+        const member = formData.cedula ? members.find(m => String(m.cedula) === String(formData.cedula)) : null;
+
+        // Determine role based on permissions
+        let finalRole: 'user' | 'admin' | 'socio' = 'user';
+
+        if (formData.permissions.includes('admin')) {
+            finalRole = 'admin';
+        } else if (member) {
+            finalRole = 'socio';
+        } else {
+            // If not admin permission and not member, strictly user (or previous role if valid?)
+            // Usually 'user' is the safe fallback.
+            finalRole = 'user';
+        }
+
+        console.log("Submitting user update:", { formData, member, finalRole });
 
         const userData = {
             ...formData,
             memberId: member?.id,
-            role: member ? 'socio' as const : formData.role,
-            name: member ? member.name : formData.name
+            role: finalRole, // Explicitly set role
+            name: member ? member.name : formData.name,
+            permissions: formData.permissions // Ensure permissions are passed
         };
 
         if (editingId) {
-            updateUser(editingId, userData);
+            updateUser(editingId, userData)
+                .then(() => {
+                    // Force reload if editing current user or to ensure consistency
+                    if (currentUser?.id === editingId) {
+                        window.location.reload();
+                    }
+                });
         } else {
             addUser(userData);
         }
@@ -63,7 +86,7 @@ const AdminUsers: React.FC = () => {
             username: user.username,
             password: user.password || '',
             name: user.name,
-            cedula: member?.cedula || '',
+            cedula: member?.cedula ? String(member.cedula) : '',
             role: user.role,
             permissions: user.permissions,
             active: user.active
@@ -95,6 +118,7 @@ const AdminUsers: React.FC = () => {
         setIsEditing(false);
         setEditingId(null);
         setCedulaStatus('none');
+        setSuggestions([]);
     };
 
     const togglePermission = (permission: Permission) => {
@@ -104,7 +128,6 @@ const AdminUsers: React.FC = () => {
                 ? prev.permissions.filter(p => p !== permission)
                 : [...prev.permissions, permission];
 
-            // If admin is selected, ensure role is admin (optional logic, but good for consistency)
             if (permission === 'admin' && !hasPermission) {
                 return { ...prev, permissions: newPermissions, role: 'admin' };
             }
@@ -118,19 +141,53 @@ const AdminUsers: React.FC = () => {
 
         if (!cedula.trim()) {
             setCedulaStatus('none');
+            setSuggestions([]);
             return;
         }
 
-        // Check if cedula exists in members
-        const member = members.find(m => m.cedula === cedula);
+        // Search members for suggestions
+        const matches = members.filter(m =>
+            String(m.cedula).includes(cedula) ||
+            m.name.toLowerCase().includes(cedula.toLowerCase())
+        ).slice(0, 5); // Limit to 5 suggestions
 
+        setSuggestions(matches);
+
+        // Check for exact match (existing logic)
+        const member = members.find(m => String(m.cedula) === cedula);
         if (member) {
             setCedulaStatus('found');
-            // Auto-fill name if member found
-            setFormData(prev => ({ ...prev, name: member.name, cedula }));
         } else {
             setCedulaStatus('not-found');
         }
+    };
+
+    const handleSelectMember = (member: typeof members[0]) => {
+        // Safe parsing of name
+        const nameParts = member.name.trim().split(/\s+/);
+        const firstName = nameParts[0] || '';
+        const lastName = nameParts.length > 1 ? nameParts[1] : (firstName.length > 1 ? firstName[1] : '');
+
+        const cedulaStr = String(member.cedula);
+        const last4Digits = cedulaStr.length >= 4 ? cedulaStr.slice(-4) : cedulaStr;
+
+        // Username generation: firstname (lower) + first char of lastname (lower) + last 4 digits
+        const generatedUsername = `${firstName.toLowerCase()}${lastName.charAt(0).toLowerCase()}${last4Digits}`;
+
+        // Password generation: Firstname (Capitalized) + First char of lastname (Capitalized) + last 4 digits
+        const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+        const generatedPassword = `${capitalize(firstName)}${lastName.charAt(0).toUpperCase()}${last4Digits}`;
+
+        setFormData({
+            ...formData,
+            cedula: String(member.cedula),
+            name: member.name,
+            username: generatedUsername,
+            password: generatedPassword,
+            role: 'socio'
+        });
+        setCedulaStatus('found');
+        setSuggestions([]); // Clear suggestions
     };
 
     return (
@@ -145,22 +202,9 @@ const AdminUsers: React.FC = () => {
                 <div className="lg:col-span-1">
                     <Card title={isEditing ? "Editar Usuario" : "Nuevo Usuario"}>
                         <form onSubmit={handleSubmit} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Nombre Completo</label>
-                                <input
-                                    type="text"
-                                    value={formData.name}
-                                    onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
-                                    required
-                                    disabled={cedulaStatus === 'found'}
-                                />
-                                {cedulaStatus === 'found' && (
-                                    <p className="text-xs text-emerald-600 mt-1">✓ Nombre auto-completado desde registro de socio</p>
-                                )}
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Número de Cédula</label>
+                            {/* Cédula Field (First) */}
+                            <div className="relative">
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Buscar Socio (Cédula o Nombre)</label>
                                 <input
                                     type="text"
                                     value={formData.cedula}
@@ -169,14 +213,56 @@ const AdminUsers: React.FC = () => {
                                         cedulaStatus === 'not-found' ? 'border-amber-500 bg-amber-50' :
                                             'border-slate-200'
                                         }`}
+                                    placeholder="Ingrese cédula o nombre..."
+                                    autoComplete="off"
                                 />
+                                {/* Suggestions Dropdown */}
+                                {suggestions.length > 0 && (
+                                    <ul className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                                        {suggestions.map(member => (
+                                            <li
+                                                key={member.id}
+                                                onClick={() => handleSelectMember(member)}
+                                                className="px-4 py-2 hover:bg-slate-50 cursor-pointer flex justify-between items-center group transition-colors"
+                                            >
+                                                <div>
+                                                    <span className="font-semibold text-slate-800">{member.cedula}</span>
+                                                    <span className="text-slate-500 text-sm ml-2">- {member.name}</span>
+                                                </div>
+                                                <span className="text-xs text-primary-600 opacity-0 group-hover:opacity-100 font-medium">Seleccionar</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+
                                 {cedulaStatus === 'found' && (
-                                    <p className="text-xs text-emerald-600 mt-1">✓ Socio encontrado - Se creará cuenta vinculada</p>
+                                    <p className="text-xs text-emerald-600 mt-1 flex items-center gap-1">
+                                        <span className="inline-block w-4 h-4 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-[10px] font-bold">✓</span>
+                                        Socio encontrado - Se vinculará la cuenta
+                                    </p>
                                 )}
                                 {cedulaStatus === 'not-found' && (
-                                    <p className="text-xs text-amber-600 mt-1">⚠ No se encontró socio con esta cédula - Se creará usuario sin vínculo</p>
+                                    <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                                        <AlertTriangle size={12} />
+                                        No se encontró socio - Se creará usuario independiente
+                                    </p>
                                 )}
                             </div>
+
+                            {/* Name Field (Second) */}
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Nombre Completo</label>
+                                <input
+                                    type="text"
+                                    value={formData.name}
+                                    onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-colors"
+                                    required
+                                    readOnly={cedulaStatus === 'found'} // Read-only if linked
+                                />
+                            </div>
+
+                            {/* Username Field (Third) */}
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 mb-1">Usuario</label>
                                 <input
@@ -187,6 +273,8 @@ const AdminUsers: React.FC = () => {
                                     required
                                 />
                             </div>
+
+                            {/* Password Field (Fourth) */}
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 mb-1">Contraseña</label>
                                 <input

@@ -3,9 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { useBanquito } from '../context/BanquitoContext';
 import { Users, DollarSign, TrendingUp, AlertCircle, ArrowUpRight, ArrowDownRight, Activity, Calendar } from 'lucide-react';
 import { Card } from '../components/ui/Card';
+import Modal from '../components/Modal';
 import { motion } from 'framer-motion';
 
-const StatCard: React.FC<{ title: string; value: string; icon: any; color: string; trend?: string }> = ({ title, value, icon: Icon, color, trend }) => {
+const StatCard: React.FC<{ title: string; value: string; icon: any; color: string; trend?: string; onClick?: () => void }> = ({ title, value, icon: Icon, color, trend, onClick }) => {
     // Map the input color class to a style object
     const getStyle = (colorClass: string) => {
         switch (colorClass) {
@@ -13,31 +14,36 @@ const StatCard: React.FC<{ title: string; value: string; icon: any; color: strin
                 gradient: 'from-blue-500 to-blue-600',
                 shadow: 'shadow-blue-500/30',
                 light: 'bg-blue-50',
-                text: 'text-blue-600'
+                text: 'text-blue-600',
+                border: 'border-blue-100'
             };
             case 'bg-emerald-500': return {
                 gradient: 'from-emerald-500 to-emerald-600',
                 shadow: 'shadow-emerald-500/30',
                 light: 'bg-emerald-50',
-                text: 'text-emerald-600'
+                text: 'text-emerald-600',
+                border: 'border-emerald-100'
             };
             case 'bg-orange-500': return {
                 gradient: 'from-orange-500 to-orange-600',
                 shadow: 'shadow-orange-500/30',
                 light: 'bg-orange-50',
-                text: 'text-orange-600'
+                text: 'text-orange-600',
+                border: 'border-orange-100'
             };
             case 'bg-purple-500': return {
                 gradient: 'from-purple-500 to-purple-600',
                 shadow: 'shadow-purple-500/30',
                 light: 'bg-purple-50',
-                text: 'text-purple-600'
+                text: 'text-purple-600',
+                border: 'border-purple-100'
             };
             default: return {
                 gradient: 'from-slate-500 to-slate-600',
                 shadow: 'shadow-slate-500/30',
                 light: 'bg-slate-50',
-                text: 'text-slate-600'
+                text: 'text-slate-600',
+                border: 'border-slate-100'
             };
         }
     };
@@ -45,7 +51,10 @@ const StatCard: React.FC<{ title: string; value: string; icon: any; color: strin
     const style = getStyle(color);
 
     return (
-        <Card className="relative overflow-hidden group hover:-translate-y-2 transition-all duration-300 hover:shadow-xl border border-slate-100">
+        <Card
+            className={`relative overflow-hidden group transition-all duration-300 hover:shadow-xl border ${style.border} ${onClick ? 'cursor-pointer active:scale-95' : ''}`}
+            onClick={onClick}
+        >
             {/* Background Decoration */}
             <div className={`absolute -right-6 -top-6 w-32 h-32 rounded-full opacity-0 group-hover:opacity-10 transition-opacity duration-500 bg-gradient-to-br ${style.gradient}`} />
 
@@ -55,7 +64,7 @@ const StatCard: React.FC<{ title: string; value: string; icon: any; color: strin
                         <Icon size={28} className="text-white" />
                     </div>
                     {trend && (
-                        <div className="flex items-center px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-100 text-xs font-bold text-emerald-600">
+                        <div className="flex items-center px-2.5 py-1 rounded-full bg-white/80 backdrop-blur-sm border border-slate-100 text-xs font-bold text-emerald-600 shadow-sm">
                             <TrendingUp size={14} className="mr-1" />
                             {trend}
                         </div>
@@ -74,6 +83,7 @@ const StatCard: React.FC<{ title: string; value: string; icon: any; color: strin
 const Dashboard: React.FC = () => {
     const navigate = useNavigate();
     const { members, weeklyPayments, loans, monthlyFees, currentUser } = useBanquito();
+    const [isMembersModalOpen, setIsMembersModalOpen] = React.useState(false);
 
     const isSocio = currentUser?.role === 'socio';
 
@@ -93,11 +103,15 @@ const Dashboard: React.FC = () => {
     }, [monthlyFees, isSocio, currentUser]);
 
     const filteredLoans = React.useMemo(() => {
-        if (isSocio && currentUser?.memberId) {
-            return loans.filter(l => l.memberId === currentUser.memberId);
+        if (currentUser?.role === 'socio') {
+            // Robust filtering by Cedula
+            return loans.filter(loan => {
+                const borrower = members.find(m => m.id === loan.memberId);
+                return loan.borrowerType === 'member' && borrower && String(borrower.cedula) === String(currentUser.username);
+            });
         }
         return loans;
-    }, [loans, isSocio, currentUser]);
+    }, [loans, currentUser, members]);
 
 
     // Calculate real-time stats
@@ -105,6 +119,8 @@ const Dashboard: React.FC = () => {
         return filteredWeeklyPayments.reduce((acc, curr) => acc + curr.amount, 0) +
             filteredMonthlyFees.reduce((acc, curr) => acc + curr.amount, 0);
     }, [filteredWeeklyPayments, filteredMonthlyFees]);
+
+
 
     const activeLoans = React.useMemo(() => {
         return filteredLoans.filter(l => l.status !== 'paid').length;
@@ -165,6 +181,7 @@ const Dashboard: React.FC = () => {
                         icon={Users}
                         color="bg-blue-500"
                         trend={isSocio ? undefined : "+2 este mes"}
+                        onClick={() => setIsMembersModalOpen(true)}
                     />
                 </motion.div>
                 <motion.div variants={item}>
@@ -394,6 +411,52 @@ const Dashboard: React.FC = () => {
                     </Card>
                 </motion.div>
             </div>
+            <Modal
+                isOpen={isMembersModalOpen}
+                onClose={() => setIsMembersModalOpen(false)}
+                title="Directorio de Socios"
+            >
+                <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+                    {members.map(member => (
+                        <div key={member.id} className="flex items-center gap-4 p-3 hover:bg-slate-50 rounded-xl transition-all border border-slate-100 hover:border-blue-100 group">
+                            <div className="w-12 h-12 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-lg shadow-sm group-hover:scale-110 transition-transform">
+                                {member.name.charAt(0)}
+                            </div>
+                            <div className="flex-1">
+                                <h4 className="font-bold text-slate-900">{member.name}</h4>
+                                <div className="flex items-center text-xs text-slate-500 mt-0.5 space-x-3">
+                                    <span className="flex items-center">
+                                        <Calendar size={12} className="mr-1" />
+                                        Desde: {new Date(member.joinedDate).toLocaleDateString()}
+                                    </span>
+                                    {member.aliases && member.aliases.length > 0 && (
+                                        <span className="bg-slate-100 px-2 py-0.5 rounded-full text-slate-600 font-medium">
+                                            {member.aliases.length} {member.aliases.length === 1 ? 'Acción' : 'Acciones'}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                            {member.active ? (
+                                <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold">
+                                    Activo
+                                </span>
+                            ) : (
+                                <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 text-xs font-bold">
+                                    Inactivo
+                                </span>
+                            )}
+                        </div>
+                    ))}
+                </div>
+                <div className="mt-6 flex justify-end">
+                    <button
+                        onClick={() => setIsMembersModalOpen(false)}
+                        className="px-4 py-2 bg-slate-100 text-slate-700 font-medium rounded-lg hover:bg-slate-200 transition-colors"
+                    >
+                        Cerrar
+                    </button>
+                </div>
+            </Modal>
         </motion.div>
     );
 };

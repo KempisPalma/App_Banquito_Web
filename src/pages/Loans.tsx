@@ -6,6 +6,11 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { motion } from 'framer-motion';
 
+const getTodayString = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 const Loans: React.FC = () => {
     const { loans, members, addLoan, updateLoan, deleteLoan, addLoanPayment, updateLoanPayment, deleteLoanPayment, currentUser } = useBanquito();
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -26,7 +31,7 @@ const Loans: React.FC = () => {
         clientName: '',
         amount: 0,
         interestRate: 10,
-        startDate: new Date().toISOString().split('T')[0],
+        startDate: getTodayString(),
         endDate: ''
     };
 
@@ -34,8 +39,9 @@ const Loans: React.FC = () => {
 
     const [paymentPrincipalAmount, setPaymentPrincipalAmount] = useState(0);
     const [paymentInterestAmount, setPaymentInterestAmount] = useState(0);
-    const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
+    const [paymentDate, setPaymentDate] = useState(getTodayString());
     const [loanFilter, setLoanFilter] = useState<'all' | 'pending' | 'paid' | 'due-soon'>('all');
+    const [socioViewMode, setSocioViewMode] = useState<'my-loans' | 'all-loans'>('my-loans'); // For socio users
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const [paymentToDelete, setPaymentToDelete] = useState<{ loanId: string; paymentId: string; amount: number } | null>(null);
     const [deleteLoanConfirmOpen, setDeleteLoanConfirmOpen] = useState(false);
@@ -92,6 +98,7 @@ const Loans: React.FC = () => {
             });
         } else {
             // Create new loan
+            const pendingInterest = Number(formData.amount) * (Number(formData.interestRate) / 100);
             addLoan({
                 borrowerType: formData.borrowerType,
                 memberId: formData.borrowerType === 'member' ? formData.memberId : undefined,
@@ -104,7 +111,7 @@ const Loans: React.FC = () => {
                 status: 'active',
                 payments: [],
                 pendingPrincipal: formData.amount,
-                pendingInterest: 0
+                pendingInterest: pendingInterest
             });
         }
         setIsModalOpen(false);
@@ -141,8 +148,17 @@ const Loans: React.FC = () => {
             return;
         }
 
-        // Create date object from selected date, treating it as local time
-        const dateToSave = new Date(paymentDate + 'T00:00:00').toISOString();
+        // Create date object
+        // If the selected date is today, use the current time
+        // If it's a past/future date, use midnight (local)
+        let dateToSave: string;
+        const todayStr = getTodayString();
+
+        if (paymentDate === todayStr) {
+            dateToSave = new Date().toISOString();
+        } else {
+            dateToSave = new Date(paymentDate + 'T00:00:00').toISOString();
+        }
 
         // Register principal payment if amount > 0
         if (paymentPrincipalAmount > 0) {
@@ -166,7 +182,7 @@ const Loans: React.FC = () => {
         setPaymentModalOpen(false);
         setPaymentPrincipalAmount(0);
         setPaymentInterestAmount(0);
-        setPaymentDate(new Date().toISOString().split('T')[0]);
+        setPaymentDate(getTodayString());
         setIsEditingPayment(false);
         setEditingPaymentId(null);
         setSelectedLoanId(null);
@@ -174,7 +190,7 @@ const Loans: React.FC = () => {
 
     const openPaymentModal = (loanId: string) => {
         setSelectedLoanId(loanId);
-        setPaymentDate(new Date().toISOString().split('T')[0]);
+        setPaymentDate(getTodayString());
         setPaymentModalOpen(true);
     };
 
@@ -255,43 +271,56 @@ const Loans: React.FC = () => {
         const totalPaid = loan.payments.reduce((acc, curr) => acc + curr.amount, 0);
         const now = new Date();
         const endDate = new Date(loan.endDate);
+        // Base interest (always on original amount)
+        const baseInterest = loan.amount * (loan.interestRate / 100);
 
         if (now <= endDate || loan.status === 'paid') {
-            // Not overdue or already paid - simple interest
-            const interestAmount = loan.amount * (loan.interestRate / 100);
             return {
                 principal: loan.amount,
-                baseInterest: interestAmount,
+                baseInterest,
                 overdueInterest: 0,
-                totalInterest: interestAmount,
-                totalDue: loan.amount + interestAmount,
+                totalInterest: baseInterest,
+                totalDue: loan.amount + baseInterest,
                 totalPaid,
-                remaining: Math.max(0, loan.amount + interestAmount - totalPaid),
-                monthsOverdue: 0
+                remaining: Math.max(0, loan.amount + baseInterest - totalPaid),
+                monthsOverdue: 0,
+                breakdown: []
             };
         }
 
-        // Calculate months overdue
-        const monthsOverdue = Math.floor((now.getTime() - endDate.getTime()) / (1000 * 60 * 60 * 24 * 30));
-
-        // Base interest (original)
-        const baseInterest = loan.amount * (loan.interestRate / 100);
-        const totalWithBaseInterest = loan.amount + baseInterest;
-
-        // Calculate remaining balance after payments
-        const remainingAfterPayments = Math.max(0, totalWithBaseInterest - totalPaid);
-
-        // Compound interest on remaining balance for each month overdue
+        // Calculate overdue interest step-by-step
         let overdueInterest = 0;
-        let currentBalance = remainingAfterPayments;
+        let breakdown = [];
+        let currentDate = new Date(endDate);
+        // Move to first overdue cutoff (1 month after endDate)
+        currentDate.setMonth(currentDate.getMonth() + 1);
 
-        for (let i = 0; i < monthsOverdue; i++) {
-            const monthInterest = currentBalance * (loan.interestRate / 100);
+        // Iterate while cutoff date is in the past (or today)
+        while (currentDate <= now) {
+            // Find payments made BEFORE this cutoff date
+            const paymentsUntilCutoff = loan.payments.filter(p =>
+                p.paymentType === 'principal' && new Date(p.date) <= currentDate
+            );
+            const principalPaidAtCutoff = paymentsUntilCutoff.reduce((acc, p) => acc + p.amount, 0);
+            const remainingPrincipalAtCutoff = Math.max(0, loan.amount - principalPaidAtCutoff);
+
+            // If principal is fully paid, no more interest generated
+            if (remainingPrincipalAtCutoff <= 0.01) break;
+
+            const monthInterest = remainingPrincipalAtCutoff * (loan.interestRate / 100);
             overdueInterest += monthInterest;
-            currentBalance += monthInterest;
+
+            breakdown.push({
+                date: new Date(currentDate), // Clone date
+                principal: remainingPrincipalAtCutoff,
+                interest: monthInterest
+            });
+
+            // Move to next month
+            currentDate.setMonth(currentDate.getMonth() + 1);
         }
 
-        const totalDue = totalWithBaseInterest + overdueInterest;
+        const totalDue = loan.amount + baseInterest + overdueInterest;
 
         return {
             principal: loan.amount,
@@ -301,7 +330,8 @@ const Loans: React.FC = () => {
             totalDue,
             totalPaid,
             remaining: Math.max(0, totalDue - totalPaid),
-            monthsOverdue
+            monthsOverdue: breakdown.length,
+            breakdown
         };
     };
 
@@ -312,7 +342,40 @@ const Loans: React.FC = () => {
                     <h1 className="text-3xl font-bold text-slate-900">Préstamos</h1>
                     <p className="text-slate-500 mt-1">Gestiona préstamos, intereses y plazos.</p>
                 </div>
-                {currentUser?.role !== 'socio' && (
+
+                {/* Socio Toggle or New Loan Button */}
+                {currentUser?.role === 'socio' ? (
+                    <div className="flex items-center gap-3">
+                        <span className="text-sm font-semibold text-slate-700">Vista:</span>
+                        <div className="relative inline-flex bg-slate-100 p-1.5 rounded-xl shadow-inner">
+                            {/* Sliding background indicator */}
+                            <div
+                                className={`absolute top-1.5 bottom-1.5 w-[calc(50%-6px)] bg-white rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.08)] border border-slate-100/50 transition-all duration-500 cubic-bezier(0.34, 1.56, 0.64, 1) ${socioViewMode === 'my-loans'
+                                    ? 'left-1.5'
+                                    : 'left-[calc(50%+0px)]'
+                                    }`}
+                            />
+                            <button
+                                onClick={() => setSocioViewMode('my-loans')}
+                                className={`relative z-10 w-44 py-2.5 rounded-lg text-sm font-bold transition-colors duration-300 text-center flex items-center justify-center gap-2 ${socioViewMode === 'my-loans'
+                                    ? 'text-indigo-600'
+                                    : 'text-slate-500 hover:text-slate-700'
+                                    }`}
+                            >
+                                Mis Préstamos
+                            </button>
+                            <button
+                                onClick={() => setSocioViewMode('all-loans')}
+                                className={`relative z-10 w-44 py-2.5 rounded-lg text-sm font-bold transition-colors duration-300 text-center flex items-center justify-center gap-2 ${socioViewMode === 'all-loans'
+                                    ? 'text-indigo-600'
+                                    : 'text-slate-500 hover:text-slate-700'
+                                    }`}
+                            >
+                                Todos los Préstamos
+                            </button>
+                        </div>
+                    </div>
+                ) : (
                     <Button onClick={() => setIsModalOpen(true)} className="shadow-lg shadow-orange-500/20 bg-orange-600 hover:bg-orange-700 focus:ring-orange-500">
                         <Plus size={20} className="mr-2" />
                         Nuevo Préstamo
@@ -376,8 +439,17 @@ const Loans: React.FC = () => {
                     return true;
                 }).filter(loan => {
                     // Filter by member if user is 'socio'
-                    if (currentUser?.role === 'socio' && currentUser.memberId) {
-                        return loan.borrowerType === 'member' && loan.memberId === currentUser.memberId;
+                    if (currentUser?.role === 'socio') {
+                        // If viewing "my loans", only show loans for this member
+                        if (socioViewMode === 'my-loans') {
+                            // Find the member associated with this loan
+                            const borrower = members.find(m => m.id === loan.memberId);
+                            // Compare the member's cedula with the current user's username (which is the cedula)
+                            // Relaxed comparison to handle string/number differences
+                            return loan.borrowerType === 'member' && borrower && String(borrower.cedula) === String(currentUser.username);
+                        }
+                        // If viewing "all loans", show all loans (no filter)
+                        return true;
                     }
                     return true;
                 }).map((loan, index) => {
@@ -395,9 +467,9 @@ const Loans: React.FC = () => {
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: index * 0.1 }}
-                            className="h-full"
+                            className=""
                         >
-                            <Card className="h-full flex flex-col border-none shadow-lg shadow-slate-200/40 hover:shadow-xl hover:shadow-slate-300/50 transition-all duration-300 overflow-hidden group rounded-2xl" padding="none">
+                            <Card className="flex flex-col border-none shadow-lg shadow-slate-200/40 hover:shadow-xl hover:shadow-slate-300/50 transition-all duration-300 overflow-hidden group rounded-2xl" padding="none">
                                 <div className="p-4 flex-1">
                                     <div className="flex justify-between items-start mb-3">
                                         <div>
@@ -416,11 +488,11 @@ const Loans: React.FC = () => {
                                                 </p>
                                             </div>
                                         </div>
-                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide flex items-center ${loan.status === 'paid' ? 'bg-emerald-100 text-emerald-700' :
-                                            isOverdue ? 'bg-red-100 text-red-700' :
-                                                'bg-orange-100 text-orange-700'
+                                        <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${Math.abs(calculations.totalPaid - calculations.totalDue) < 0.1 || calculations.totalPaid >= calculations.totalDue
+                                            ? 'bg-emerald-100 text-emerald-700'
+                                            : 'bg-orange-100 text-orange-700'
                                             }`}>
-                                            {loan.status === 'paid' ? 'Pagado' : isOverdue ? 'Vencido' : 'Activo'}
+                                            {Math.abs(calculations.totalPaid - calculations.totalDue) < 0.1 || calculations.totalPaid >= calculations.totalDue ? 'PAGADO' : 'ACTIVO'}
                                         </span>
                                     </div>
 
@@ -452,10 +524,13 @@ const Loans: React.FC = () => {
                                     </div>
 
                                     {/* Progress & Balances */}
-                                    <div className="space-y-3 mb-4">
+                                    <div className="space-y-3 mb-2">
                                         <div className="flex justify-between text-[10px] uppercase font-bold text-slate-500">
                                             <span>Progreso</span>
-                                            <span className="text-emerald-600">{Math.round(progress)}%</span>
+                                            <div className="flex items-center gap-1">
+                                                <span className="text-slate-400 font-normal normal-case mr-1">(${calculations.totalPaid.toFixed(2)})</span>
+                                                <span className="text-emerald-600">{Math.round(progress)}%</span>
+                                            </div>
                                         </div>
                                         <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
                                             <div
@@ -464,21 +539,7 @@ const Loans: React.FC = () => {
                                             />
                                         </div>
 
-                                        {/* New Detailed Balances */}
-                                        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
-                                            <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
-                                                <p className="text-[9px] text-slate-400 uppercase font-bold tracking-wider mb-0.5">Capital Pendiente</p>
-                                                <p className="text-sm font-bold text-slate-700">
-                                                    ${(loan.pendingPrincipal ?? calculations.remaining).toFixed(2)}
-                                                </p>
-                                            </div>
-                                            <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
-                                                <p className="text-[9px] text-slate-400 uppercase font-bold tracking-wider mb-0.5">Interés Pendiente</p>
-                                                <p className="text-sm font-bold text-slate-700">
-                                                    ${(loan.pendingInterest ?? 0).toFixed(2)}
-                                                </p>
-                                            </div>
-                                        </div>
+
                                     </div>
 
                                     {/* Payment History Summary */}
@@ -504,34 +565,34 @@ const Loans: React.FC = () => {
                                 <div className="bg-white border-t border-slate-100 px-3 py-3 mt-auto">
                                     <div className="flex items-center justify-between gap-2">
                                         {currentUser?.role !== 'socio' ? (
-                                            <button
-                                                onClick={() => openEditModal(loan)}
-                                                className="p-1.5 rounded-lg text-blue-600 bg-blue-50 border border-blue-100 hover:bg-blue-500 hover:text-white hover:shadow-md transition-all duration-300 transform active:scale-95"
-                                                title="Editar préstamo"
-                                            >
-                                                <Edit2 size={16} />
-                                            </button>
-                                        ) : <div className="w-8"></div>}
+                                            <>
+                                                <button
+                                                    onClick={() => openEditModal(loan)}
+                                                    className="p-1.5 rounded-lg text-blue-600 bg-blue-50 border border-blue-100 hover:bg-blue-500 hover:text-white hover:shadow-md transition-all duration-300 transform active:scale-95"
+                                                    title="Editar préstamo"
+                                                >
+                                                    <Edit2 size={16} />
+                                                </button>
 
-                                        <button
-                                            onClick={() => openPaymentModal(loan.id)}
-                                            disabled={loan.status === 'paid'}
-                                            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-md shadow-emerald-500/20 hover:shadow-lg hover:shadow-emerald-500/30 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 group/btn disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none"
-                                            title="Registrar abono"
-                                        >
-                                            <DollarSign size={16} className="group-hover/btn:rotate-12 transition-transform" />
-                                            <span>ABONAR</span>
-                                        </button>
+                                                <button
+                                                    onClick={() => openPaymentModal(loan.id)}
+                                                    disabled={calculations.remaining <= 0.01}
+                                                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-md shadow-emerald-500/20 hover:shadow-lg hover:shadow-emerald-500/30 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 group/btn disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none"
+                                                    title={calculations.remaining <= 0.01 ? "Préstamo pagado" : "Registrar abono"}
+                                                >
+                                                    <DollarSign size={16} className="group-hover/btn:rotate-12 transition-transform" />
+                                                    <span>ABONAR</span>
+                                                </button>
 
-                                        {currentUser?.role !== 'socio' ? (
-                                            <button
-                                                onClick={() => handleDeleteLoan(loan.id, borrowerName || '', loan.amount)}
-                                                className="p-1.5 rounded-lg text-rose-600 bg-rose-50 border border-rose-100 hover:bg-rose-500 hover:text-white hover:shadow-md transition-all duration-300 transform active:scale-95"
-                                                title="Eliminar préstamo"
-                                            >
-                                                <Trash2 size={16} />
-                                            </button>
-                                        ) : <div className="w-8"></div>}
+                                                <button
+                                                    onClick={() => handleDeleteLoan(loan.id, borrowerName || '', loan.amount)}
+                                                    className="p-1.5 rounded-lg text-rose-600 bg-rose-50 border border-rose-100 hover:bg-rose-500 hover:text-white hover:shadow-md transition-all duration-300 transform active:scale-95"
+                                                    title="Eliminar préstamo"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </>
+                                        ) : null}
                                     </div>
                                 </div>
                             </Card>
@@ -687,7 +748,7 @@ const Loans: React.FC = () => {
                     setPaymentModalOpen(false);
                     setPaymentPrincipalAmount(0);
                     setPaymentInterestAmount(0);
-                    setPaymentDate(new Date().toISOString().split('T')[0]);
+                    setPaymentDate(getTodayString());
                     setIsEditingPayment(false);
                     setEditingPaymentId(null);
                     setEditingPaymentType(null);
@@ -874,6 +935,7 @@ const Loans: React.FC = () => {
                     const member = selectedLoanHistory.borrowerType === 'member' ? members.find(m => m.id === selectedLoanHistory.memberId) : null;
                     const borrowerName = selectedLoanHistory.borrowerType === 'member' ? (member?.name || 'Socio Desconocido') : selectedLoanHistory.clientName;
                     const isOverdue = new Date() > new Date(selectedLoanHistory.endDate) && selectedLoanHistory.status !== 'paid';
+                    const calculations = calculateTotalDue(selectedLoanHistory);
 
                     return (
                         <div className="space-y-5">
@@ -923,60 +985,95 @@ const Loans: React.FC = () => {
                                 </div>
                             </div>
 
-                            {/* Payment List */}
-                            <div>
-                                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-1">Historial de Abonos</h4>
+                            {/* Consolidated Transaction History */}
+                            <div className="mt-6">
+                                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-1">Historial de Movimientos</h4>
                                 <div className="max-h-[50vh] overflow-y-auto pr-1 space-y-2">
-                                    {selectedLoanHistory.payments.length === 0 ? (
-                                        <div className="text-center py-8 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                                            <p className="text-sm text-slate-400 font-medium">No hay pagos registrados</p>
-                                        </div>
-                                    ) : (
-                                        [...selectedLoanHistory.payments]
-                                            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                                            .map((payment) => (
-                                                <div key={payment.id} className="flex justify-between items-center p-3 bg-white border border-slate-100 rounded-xl hover:border-slate-200 hover:shadow-sm transition-all group">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center border ${payment.paymentType === 'principal' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-purple-50 text-purple-600 border-purple-100'
-                                                            }`}>
-                                                            <DollarSign size={14} strokeWidth={2.5} />
-                                                        </div>
-                                                        <div>
-                                                            <p className="font-bold text-slate-800 text-sm">${payment.amount.toFixed(2)}</p>
-                                                            <div className="flex items-center gap-2">
-                                                                <span className={`text-[9px] font-bold px-1.5 py-px rounded-md uppercase tracking-wide ${payment.paymentType === 'principal' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
-                                                                    }`}>
-                                                                    {payment.paymentType === 'principal' ? 'Capital' : 'Interés'}
-                                                                </span>
-                                                                <span className="text-[10px] text-slate-400 font-medium">
-                                                                    {new Date(payment.date.split('T')[0] + 'T00:00:00').toLocaleDateString()}
-                                                                </span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
+                                    {(() => {
+                                        // Combine payments and interest charges
+                                        const transactions = [
+                                            ...selectedLoanHistory.payments.map(p => ({
+                                                ...p,
+                                                type: 'payment', // Credit
+                                                dateObj: new Date(p.date),
+                                                principalBase: undefined // Add checking prop
+                                            })),
+                                            ...(calculations.breakdown || []).map((b: any) => ({
+                                                id: `int-${b.date.getTime()}`,
+                                                type: 'charge', // Debit
+                                                paymentType: 'interest_charge',
+                                                amount: b.interest,
+                                                date: b.date.toISOString(),
+                                                dateObj: b.date,
+                                                principalBase: b.principal
+                                            }))
+                                        ].sort((a, b) => b.dateObj.getTime() - a.dateObj.getTime());
 
-                                                    {currentUser?.role !== 'socio' && (
-                                                        <div className="flex items-center gap-1 opacity-100 bg-white shadow-sm border border-slate-100 rounded-lg p-0.5">
-                                                            <button
-                                                                onClick={() => handleEditPaymentFromHistory(selectedLoanHistory.id, payment)}
-                                                                className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-all"
-                                                                title="Editar"
-                                                            >
-                                                                <Edit2 size={14} />
-                                                            </button>
-                                                            <div className="w-px h-3 bg-slate-200"></div>
-                                                            <button
-                                                                onClick={() => handleDeletePaymentFromHistory(selectedLoanHistory.id, payment.id, payment.amount)}
-                                                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-all"
-                                                                title="Eliminar"
-                                                            >
-                                                                <Trash2 size={14} />
-                                                            </button>
-                                                        </div>
-                                                    )}
+                                        if (transactions.length === 0) {
+                                            return (
+                                                <div className="text-center py-8 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                                                    <p className="text-sm text-slate-400 font-medium">No hay movimientos registrados</p>
                                                 </div>
-                                            ))
-                                    )}
+                                            );
+                                        }
+
+                                        return transactions.map((item) => (
+                                            <div key={item.id} className={`flex justify-between items-center p-3 border rounded-xl transition-all group ${item.type === 'charge'
+                                                ? 'bg-red-50 border-red-100'
+                                                : 'bg-white border-slate-100 hover:border-slate-200 hover:shadow-sm'
+                                                }`}>
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center border ${item.type === 'charge'
+                                                        ? 'bg-red-100 text-red-600 border-red-200'
+                                                        : item.paymentType === 'principal' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-purple-50 text-purple-600 border-purple-100'
+                                                        }`}>
+                                                        {item.type === 'charge' ? <TrendingUp size={14} strokeWidth={2.5} /> : <DollarSign size={14} strokeWidth={2.5} />}
+                                                    </div>
+                                                    <div>
+                                                        <p className={`font-bold text-sm ${item.type === 'charge' ? 'text-red-800' : 'text-slate-800'}`}>
+                                                            ${item.amount.toFixed(2)}
+                                                        </p>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={`text-[9px] font-bold px-1.5 py-px rounded-md uppercase tracking-wide ${item.type === 'charge'
+                                                                ? 'bg-red-200 text-red-800'
+                                                                : item.paymentType === 'principal' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
+                                                                }`}>
+                                                                {item.type === 'charge' ? 'Mora Generada' : item.paymentType === 'principal' ? 'Abono Capital' : 'Abono Interés'}
+                                                            </span>
+                                                            <span className={`text-[10px] font-medium ${item.type === 'charge' ? 'text-red-600' : 'text-slate-400'}`}>
+                                                                {item.type === 'charge' ? item.dateObj.toLocaleDateString() : item.dateObj.toLocaleString()}
+                                                            </span>
+                                                        </div>
+                                                        {item.type === 'charge' && (
+                                                            <p className="text-[9px] text-red-500 mt-0.5">
+                                                                (10% de ${item.principalBase?.toFixed(2)} capital pendiente)
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {item.type === 'payment' && currentUser?.role !== 'socio' && (
+                                                    <div className="flex items-center gap-1 opacity-100 bg-white shadow-sm border border-slate-100 rounded-lg p-0.5">
+                                                        <button
+                                                            onClick={() => handleEditPaymentFromHistory(selectedLoanHistory.id, item as any)}
+                                                            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-all"
+                                                            title="Editar"
+                                                        >
+                                                            <Edit2 size={14} />
+                                                        </button>
+                                                        <div className="w-px h-3 bg-slate-200"></div>
+                                                        <button
+                                                            onClick={() => handleDeletePaymentFromHistory(selectedLoanHistory.id, item.id, item.amount)}
+                                                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-all"
+                                                            title="Eliminar"
+                                                        >
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ));
+                                    })()}
                                 </div>
                             </div>
                         </div>

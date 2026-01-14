@@ -109,7 +109,10 @@ app.post('/api/auth/register', async (req, res) => {
 
 app.get('/api/users', async (req, res) => {
     try {
-        const { data: users, error } = await supabase.from('users').select('*');
+        const { data: users, error } = await supabase
+            .from('users')
+            .select('*')
+            .order('created_at', { ascending: true });
         if (error) throw error;
 
         // Ensure permissions are proper objects (Supabase does this automatically for JSONB usually)
@@ -127,6 +130,12 @@ app.get('/api/users', async (req, res) => {
 
 app.post('/api/users', async (req, res) => {
     const { username, password, name, role, memberId, permissions, active } = req.body;
+
+    // Validation: Socio must have a memberId
+    if (role === 'socio' && !memberId) {
+        return res.status(400).json({ success: false, error: 'Para usuarios con rol Socio, es obligatorio vincular un socio existente.' });
+    }
+
     const id = uuidv4();
     try {
         const { error } = await supabase
@@ -152,6 +161,12 @@ app.post('/api/users', async (req, res) => {
 app.put('/api/users/:id', async (req, res) => {
     const { id } = req.params;
     const { username, password, name, role, memberId, permissions, active } = req.body;
+
+    // Validation
+    if (role === 'socio' && !memberId) {
+        return res.status(400).json({ success: false, error: 'Para usuarios con rol Socio, es obligatorio vincular un socio existente.' });
+    }
+
     try {
         const { error } = await supabase
             .from('users')
@@ -234,8 +249,12 @@ app.put('/api/settings/:userId', async (req, res) => {
 
 app.get('/api/members', async (req, res) => {
     try {
-        const { data: members, error } = await supabase.from('members').select('*');
+        const { data: members, error } = await supabase.from('members').select('*').order('joined_date', { ascending: true, nullsFirst: true });
         if (error) throw error;
+
+        if (members.length > 0) {
+            console.log("Member keys:", Object.keys(members[0]));
+        }
 
         members.forEach(m => {
             if (typeof m.aliases === 'string') {
@@ -251,14 +270,7 @@ app.get('/api/members', async (req, res) => {
 app.post('/api/members', async (req, res) => {
     const { name, cedula, aliases, phone, active } = req.body;
 
-    // LOGGING ADDED FOR DEBUGGING
-    console.log('------------------------------------------------');
-    console.log('📌 [POST /api/members] Solicitud de creación de miembro');
-    console.log('   Nombre:', name);
-    console.log('   Cédula:', cedula);
-    console.log('   Origin:', req.headers['origin'] || 'Unknown');
-    console.log('   User-Agent:', req.headers['user-agent']);
-    console.log('------------------------------------------------');
+
 
     const id = uuidv4();
     const joinedDate = new Date().toISOString();
@@ -331,6 +343,80 @@ app.put('/api/members/:id', async (req, res) => {
             .eq('id', id);
 
         if (error) throw error;
+
+        // Sync activities for any new aliases/actions
+        const { data: allActivities } = await supabase.from('activities').select('id');
+        const { data: existingMas, error: fetchError } = await supabase.from('member_activities')
+            .select('id, activity_id, action_alias')
+            .eq('member_id', id);
+
+        if (fetchError) console.error("Error fetching existing MAs:", fetchError);
+
+        if (allActivities) {
+            console.log("Syncing activities for member:", id);
+            console.log("Aliases received:", aliases);
+
+            const identities = (aliases && aliases.length > 0)
+                ? aliases.map(alias => ({ memberId: id, actionAlias: alias }))
+                : [{ memberId: id, actionAlias: null }];
+
+            console.log("Identities to check:", identities);
+
+            const toInsert = [];
+
+            allActivities.forEach(activity => {
+                identities.forEach(identity => {
+                    const exists = existingMas?.some(ma =>
+                        ma.activity_id === activity.id &&
+                        ma.action_alias === identity.actionAlias
+                    );
+
+                    if (!exists) {
+                        console.log(`Adding new activity participation: ActID=${activity.id}, Alias=${identity.actionAlias}`);
+                        toInsert.push({
+                            id: uuidv4(),
+                            activity_id: activity.id,
+                            member_id: id,
+                            action_alias: identity.actionAlias,
+                            tickets_sold: 0,
+                            tickets_returned: 0,
+                            amount_paid: 0,
+                            fully_paid: false
+                        });
+                    }
+                });
+            });
+
+            if (toInsert.length > 0) {
+                console.log("Inserting new MAs:", toInsert.length);
+                const { error: insertError } = await supabase.from('member_activities').insert(toInsert);
+                if (insertError) console.error("Error inserting MAs:", insertError);
+            } else {
+                console.log("No new MAs to insert.");
+            }
+
+            // identify aliases to remove and delete them
+            if (existingMas) {
+                const toDeleteIds = existingMas
+                    .filter(ma => {
+                        // We want to DELETE if the alias is NOT in the new identities list
+                        const foundInNew = identities.some(i => i.actionAlias === ma.action_alias);
+                        return !foundInNew;
+                    })
+                    .map(ma => ma.id);
+
+                if (toDeleteIds.length > 0) {
+                    console.log("Deleting removed MAs count:", toDeleteIds.length, toDeleteIds);
+                    const { error: delError } = await supabase
+                        .from('member_activities')
+                        .delete()
+                        .in('id', toDeleteIds);
+
+                    if (delError) console.error("Error deleting MAs:", delError);
+                }
+            }
+        }
+
         res.json({ success: true });
     } catch (err) {
         handleError(res, err);
@@ -740,6 +826,7 @@ app.post('/api/loans', async (req, res) => {
     const id = uuidv4();
 
     try {
+        const pendingInterest = amount * (interestRate / 100);
         const { error } = await supabase
             .from('loans')
             .insert({
@@ -754,7 +841,7 @@ app.post('/api/loans', async (req, res) => {
                 end_date: endDate,
                 status: status || 'active',
                 pending_principal: amount,
-                pending_interest: 0,
+                pending_interest: pendingInterest,
                 next_due_date: endDate
             });
 
@@ -842,10 +929,61 @@ app.post('/api/loans/:id/payments', async (req, res) => {
             if (pending_interest < 0) pending_interest = 0;
         }
 
+        // Fetch all payments to recalculate status accurately using the simulation logic
+        const { data: allPayments, error: historyError } = await supabase
+            .from('loan_payments')
+            .select('*')
+            .eq('loan_id', id);
+
+        if (historyError) throw historyError;
+
+        // --- Recalculate Loan Status with Overdue Logic (Backend Port) ---
+        // Includes the current payment which was just inserted
+        const currentPayments = [...allPayments, { amount, payment_type: paymentType, date: date || new Date().toISOString() }];
+
+        // Helper to calculate total due
+        const calculateBackendTotalDue = (loanObj, paymentsList) => {
+            const endDate = new Date(loanObj.end_date);
+            const now = new Date(); // Server time
+            const interestRate = parseFloat(loanObj.interest_rate);
+            const amountOriginal = parseFloat(loanObj.amount);
+
+            // Base Interest
+            const baseInterest = amountOriginal * (interestRate / 100);
+
+            // Simulation State
+            let overdueInterest = 0;
+            let currentDate = new Date(endDate);
+            currentDate.setMonth(currentDate.getMonth() + 1);
+
+            while (currentDate <= now) {
+                // Payments before cutoff
+                const paymentsUntilCutoff = paymentsList.filter(p =>
+                    p.payment_type === 'principal' && new Date(p.date) <= currentDate
+                );
+                const principalPaidAtCutoff = paymentsUntilCutoff.reduce((acc, p) => acc + parseFloat(p.amount), 0);
+                const remainingPrincipal = Math.max(0, amountOriginal - principalPaidAtCutoff);
+
+                if (remainingPrincipal <= 0.01) break;
+
+                overdueInterest += remainingPrincipal * (interestRate / 100);
+                currentDate.setMonth(currentDate.getMonth() + 1);
+            }
+
+            return amountOriginal + baseInterest + overdueInterest;
+        };
+
+        const realTotalDue = calculateBackendTotalDue(loan, currentPayments);
+        const realTotalPaid = currentPayments.reduce((acc, p) => acc + parseFloat(p.amount), 0);
+        const realRemaining = Math.max(0, realTotalDue - realTotalPaid);
+
         let newStatus = loan.status;
-        if (pending_principal <= 0.01) {
+        if (realRemaining <= 0.01) {
             newStatus = 'paid';
+        } else {
+            newStatus = 'active'; // Reopen if unpaid balance exists
         }
+        // -----------------------------------------------------------------
 
         const paymentDateObj = new Date(date || new Date().toISOString());
         const nextDueDateObj = new Date(paymentDateObj);
@@ -957,6 +1095,152 @@ app.get('/api/health', async (req, res) => {
             message: err.message,
             stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
         });
+    }
+});
+
+// ==================== ADMIN MIGRATION / IMPORT ROUTES ====================
+
+app.post('/api/admin/import', async (req, res) => {
+    const { members, users, activities, loans, weeklyPayments, monthlyFees, memberActivities } = req.body;
+
+    try {
+        // 1. Members
+        if (members && members.length > 0) {
+            const membersToUpsert = members.map(m => ({
+                id: m.id,
+                name: m.name,
+                cedula: m.cedula,
+                aliases: typeof m.aliases === 'string' ? JSON.parse(m.aliases) : (m.aliases || []),
+                phone: m.phone,
+                active: m.active,
+                joined_date: m.joinedDate || m.joined_date || new Date().toISOString()
+            }));
+            const { error: errMembers } = await supabase.from('members').upsert(membersToUpsert);
+            if (errMembers) throw errMembers;
+        }
+
+        // 2. Users
+        if (users && users.length > 0) {
+            const usersToUpsert = users.map(u => ({
+                id: u.id,
+                username: u.username,
+                password: u.password,
+                name: u.name,
+                role: u.role,
+                member_id: u.memberId || u.member_id,
+                permissions: typeof u.permissions === 'string' ? JSON.parse(u.permissions) : (u.permissions || []),
+                active: u.active
+            }));
+            const { error: errUsers } = await supabase.from('users').upsert(usersToUpsert);
+            if (errUsers) throw errUsers;
+        }
+
+        // 3. Activities
+        if (activities && activities.length > 0) {
+            const activitiesToUpsert = activities.map(a => ({
+                id: a.id,
+                name: a.name,
+                date: a.date,
+                description: a.description,
+                ticket_price: a.ticketPrice || a.ticket_price,
+                total_tickets_per_member: a.totalTicketsPerMember || a.total_tickets_per_member,
+                investment: a.investment
+            }));
+            const { error: errActivities } = await supabase.from('activities').upsert(activitiesToUpsert);
+            if (errActivities) throw errActivities;
+        }
+
+        // 4. Loans & Payments inside Loans
+        if (loans && loans.length > 0) {
+            const loansToUpsert = loans.map(l => ({
+                id: l.id,
+                member_id: l.memberId || l.member_id,
+                action_alias: l.actionAlias || l.action_alias,
+                client_name: l.clientName || l.client_name,
+                borrower_type: l.borrowerType || l.borrower_type,
+                amount: l.amount,
+                interest_rate: l.interestRate || l.interest_rate,
+                start_date: l.startDate || l.start_date,
+                end_date: l.endDate || l.end_date,
+                status: l.status,
+                pending_principal: l.pendingPrincipal !== undefined ? l.pendingPrincipal : l.pending_principal,
+                pending_interest: l.pendingInterest !== undefined ? l.pendingInterest : l.pending_interest,
+                last_payment_date: l.lastPaymentDate || l.last_payment_date,
+                next_due_date: l.nextDueDate || l.next_due_date
+            }));
+            const { error: errLoans } = await supabase.from('loans').upsert(loansToUpsert);
+            if (errLoans) throw errLoans;
+
+            // Extract payments from loans
+            let allLoanPayments = [];
+            loans.forEach(l => {
+                if (l.payments && l.payments.length > 0) {
+                    allLoanPayments = [...allLoanPayments, ...l.payments.map(p => ({
+                        id: p.id,
+                        loan_id: p.loanId || p.loan_id || l.id,
+                        amount: p.amount,
+                        payment_type: p.paymentType || p.payment_type,
+                        date: p.date
+                    }))];
+                }
+            });
+
+            if (allLoanPayments.length > 0) {
+                const { error: errLP } = await supabase.from('loan_payments').upsert(allLoanPayments);
+                if (errLP) console.error("Error upserting loan payments", errLP); // Log but continue
+            }
+        }
+
+        // 5. Weekly Payments
+        if (weeklyPayments && weeklyPayments.length > 0) {
+            const wpToUpsert = weeklyPayments.map(p => ({
+                id: p.id,
+                member_id: p.memberId || p.member_id,
+                action_alias: p.actionAlias || p.action_alias,
+                year: p.year,
+                month: p.month,
+                week: p.week,
+                amount: p.amount,
+                date: p.date
+            }));
+            const { error: errWP } = await supabase.from('weekly_payments').upsert(wpToUpsert);
+            if (errWP) throw errWP;
+        }
+
+        // 6. Monthly Fees
+        if (monthlyFees && monthlyFees.length > 0) {
+            const mfToUpsert = monthlyFees.map(f => ({
+                id: f.id,
+                member_id: f.memberId || f.member_id,
+                action_alias: f.actionAlias || f.action_alias,
+                year: f.year,
+                month: f.month,
+                amount: f.amount,
+                date: f.date
+            }));
+            const { error: errMF } = await supabase.from('monthly_fees').upsert(mfToUpsert);
+            if (errMF) throw errMF;
+        }
+
+        // 7. Member Activities
+        if (memberActivities && memberActivities.length > 0) {
+            const maToUpsert = memberActivities.map(ma => ({
+                id: ma.id,
+                activity_id: ma.activityId || ma.activity_id,
+                member_id: ma.memberId || ma.member_id,
+                action_alias: ma.actionAlias || ma.action_alias,
+                tickets_sold: ma.ticketsSold !== undefined ? ma.ticketsSold : ma.tickets_sold,
+                tickets_returned: ma.ticketsReturned !== undefined ? ma.ticketsReturned : ma.tickets_returned,
+                amount_paid: ma.amountPaid !== undefined ? ma.amountPaid : ma.amount_paid,
+                fully_paid: ma.fullyPaid !== undefined ? ma.fullyPaid : ma.fully_paid
+            }));
+            const { error: errMA } = await supabase.from('member_activities').upsert(maToUpsert);
+            if (errMA) throw errMA;
+        }
+
+        res.json({ success: true, message: "Data imported successfully" });
+    } catch (err) {
+        handleError(res, err);
     }
 });
 

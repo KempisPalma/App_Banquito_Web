@@ -103,8 +103,22 @@ const Payments: React.FC = () => {
     // Filter Logic
     const isSocio = currentUser?.role === 'socio';
 
-    let filteredMembers = isSocio && currentUser.memberId
-        ? members.filter(m => m.id === currentUser.memberId)
+    // Find the current member object for socio
+    const currentMember = isSocio && currentUser.username
+        ? members.find(m => String(m.cedula) === String(currentUser.username))
+        : null;
+
+    // Persist/Initialize Action Selection for Socio
+    useEffect(() => {
+        if (isSocio && currentMember?.aliases && currentMember.aliases.length > 0 && !selectedActionAlias) {
+            // Default to first action if none selected
+            setSelectedActionAlias(currentMember.aliases[0]);
+        }
+    }, [isSocio, currentMember, selectedActionAlias]);
+
+
+    let filteredMembers = isSocio && currentMember
+        ? [currentMember]
         : members;
 
     if (viewMode === 'individual' && selectedMemberId && !isSocio) {
@@ -115,9 +129,12 @@ const Payments: React.FC = () => {
     const paymentRows: PaymentRow[] = filteredMembers.flatMap(member => {
         if (member.aliases && member.aliases.length > 0) {
             let aliasesToShow = member.aliases;
-            if (viewMode === 'individual' && selectedActionAlias && !isSocio) {
+
+            // Filter by selected action for BOTH socio and admin (if individual view selected)
+            if ((isSocio || viewMode === 'individual') && selectedActionAlias) {
                 aliasesToShow = member.aliases.filter(alias => alias === selectedActionAlias);
             }
+
             return aliasesToShow.map(alias => ({
                 memberId: member.id,
                 memberName: member.name,
@@ -240,7 +257,7 @@ const Payments: React.FC = () => {
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
                     <div>
                         <h1 className="text-2xl font-bold text-slate-800 tracking-tight">
-                            {isSocio ? 'Mis Pagos' : 'Pagos Semanales'}
+                            {isSocio ? `Hola, ${currentMember?.name || 'Socio'}` : 'Pagos Semanales'}
                         </h1>
                         <p className="text-slate-500 mt-1 text-sm">
                             {isSocio
@@ -249,37 +266,54 @@ const Payments: React.FC = () => {
                         </p>
                     </div>
 
-                    <div className="flex gap-3 items-center bg-white/80 backdrop-blur-sm p-1.5 rounded-xl shadow-sm border border-slate-200/60">
-                        {/* Month Selector: Only for Admin in 'All' view */}
-                        {showMonthlyView && (
-                            <>
-                                <div className="relative group">
-                                    <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
-                                        <Calendar className="h-3.5 w-3.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
-                                    </div>
-                                    <select
-                                        value={selectedMonth}
-                                        onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                                        className="pl-8 pr-6 py-2 bg-transparent border-none rounded-lg focus:ring-2 focus:ring-indigo-500/20 text-slate-700 text-sm font-semibold cursor-pointer hover:bg-slate-50 transition-colors appearance-none"
-                                    >
-                                        {months.map((month, index) => (
-                                            <option key={index} value={index}>{month}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div className="w-px h-6 bg-slate-200" />
-                            </>
+                    <div className="flex flex-wrap gap-3 items-center">
+                        {/* Action Selector for Socio */}
+                        {isSocio && currentMember?.aliases && currentMember.aliases.length > 0 && (
+                            <div className="bg-white/80 backdrop-blur-sm p-1.5 rounded-xl shadow-sm border border-slate-200/60">
+                                <select
+                                    value={selectedActionAlias}
+                                    onChange={(e) => setSelectedActionAlias(e.target.value)}
+                                    className="px-3 py-2 bg-transparent border-none rounded-lg focus:ring-2 focus:ring-indigo-500/20 text-slate-700 text-sm font-semibold cursor-pointer hover:bg-slate-50 transition-colors appearance-none min-w-[150px]"
+                                >
+                                    {currentMember.aliases.map(alias => (
+                                        <option key={alias} value={alias}>{alias}</option>
+                                    ))}
+                                </select>
+                            </div>
                         )}
 
-                        <select
-                            value={selectedYear}
-                            onChange={(e) => setSelectedYear(Number(e.target.value))}
-                            className="px-3 py-2 bg-transparent border-none rounded-lg focus:ring-2 focus:ring-indigo-500/20 text-slate-700 text-sm font-semibold cursor-pointer hover:bg-slate-50 transition-colors appearance-none"
-                        >
-                            {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(year => (
-                                <option key={year} value={year}>{year}</option>
-                            ))}
-                        </select>
+                        <div className="flex gap-3 items-center bg-white/80 backdrop-blur-sm p-1.5 rounded-xl shadow-sm border border-slate-200/60">
+                            {/* Month Selector: Only for Admin in 'All' view */}
+                            {showMonthlyView && (
+                                <>
+                                    <div className="relative group">
+                                        <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                                            <Calendar className="h-3.5 w-3.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                                        </div>
+                                        <select
+                                            value={selectedMonth}
+                                            onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                                            className="pl-8 pr-6 py-2 bg-transparent border-none rounded-lg focus:ring-2 focus:ring-indigo-500/20 text-slate-700 text-sm font-semibold cursor-pointer hover:bg-slate-50 transition-colors appearance-none"
+                                        >
+                                            {months.map((month, index) => (
+                                                <option key={index} value={index}>{month}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="w-px h-6 bg-slate-200" />
+                                </>
+                            )}
+
+                            <select
+                                value={selectedYear}
+                                onChange={(e) => setSelectedYear(Number(e.target.value))}
+                                className="px-3 py-2 bg-transparent border-none rounded-lg focus:ring-2 focus:ring-indigo-500/20 text-slate-700 text-sm font-semibold cursor-pointer hover:bg-slate-50 transition-colors appearance-none"
+                            >
+                                {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(year => (
+                                    <option key={year} value={year}>{year}</option>
+                                ))}
+                            </select>
+                        </div>
                     </div>
                 </div>
 

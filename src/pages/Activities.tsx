@@ -147,7 +147,13 @@ const Activities: React.FC = () => {
     const filteredActivities = orderedActivities; // Use the ordered state for rendering
 
     const selectedActivity = filteredActivities.find(a => a.id === selectedActivityId) || filteredActivities[0];
-    const currentMemberActivities = memberActivities.filter(ma => ma.activityId === selectedActivity?.id);
+    const currentMemberActivities = memberActivities
+        .filter(ma => ma.activityId === selectedActivity?.id)
+        .sort((a, b) => {
+            const indexA = members.findIndex(m => m.id === a.memberId);
+            const indexB = members.findIndex(m => m.id === b.memberId);
+            return indexA - indexB;
+        });
 
     // Calculate stats for selected activity
     const totalRevenue = currentMemberActivities.reduce((acc, curr) => acc + (curr.ticketsSold * (selectedActivity?.ticketPrice || 0)), 0);
@@ -201,7 +207,7 @@ const Activities: React.FC = () => {
                         <ArrowUpDown size={20} />
                     </button>
 
-                    {currentUser?.role !== 'socio' && (
+                    {(currentUser?.role === 'admin' || currentUser?.role === 'user') && (
                         <Button
                             onClick={() => {
                                 setIsEditMode(false);
@@ -227,9 +233,11 @@ const Activities: React.FC = () => {
                         No hay actividades en {selectedMonth === -1 ? `el año ${selectedYear}` : `${monthNames[selectedMonth]} ${selectedYear}`}
                     </h3>
                     <p className="max-w-md mx-auto mb-8">Crea una nueva actividad o rifa, o selecciona otro período.</p>
-                    <Button onClick={() => setIsModalOpen(true)} variant="outline" className="border-purple-200 text-purple-600 hover:bg-purple-50">
-                        Crear actividad
-                    </Button>
+                    {(currentUser?.role === 'admin' || currentUser?.role === 'user') && (
+                        <Button onClick={() => setIsModalOpen(true)} variant="outline" className="border-purple-200 text-purple-600 hover:bg-purple-50">
+                            Crear actividad
+                        </Button>
+                    )}
                 </Card>
             ) : (
                 <>
@@ -337,7 +345,7 @@ const Activities: React.FC = () => {
                                                 </span>
                                             </div>
                                         </div>
-                                        {currentUser?.role !== 'socio' && (
+                                        {(currentUser?.role === 'admin' || currentUser?.role === 'user') && (
                                             <div className="flex gap-2">
                                                 <button
                                                     onClick={(e) => {
@@ -435,9 +443,7 @@ const Activities: React.FC = () => {
                                                             </div>
                                                         </td>
                                                         <td className="px-6 py-5 text-center">
-                                                            {currentUser?.role === 'socio' ? (
-                                                                <span className="font-bold text-slate-700">{ma.ticketsSold}</span>
-                                                            ) : (
+                                                            {currentUser?.role === 'admin' || currentUser?.role === 'user' ? (
                                                                 <input
                                                                     type="number"
                                                                     min="0"
@@ -446,6 +452,8 @@ const Activities: React.FC = () => {
                                                                     onChange={(e) => handleTicketUpdate(ma.id, 'ticketsSold', Number(e.target.value))}
                                                                     className="w-20 text-center bg-white border border-slate-200 rounded-lg py-1.5 focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all font-medium text-slate-700"
                                                                 />
+                                                            ) : (
+                                                                <span className="font-bold text-slate-700">{ma.ticketsSold}</span>
                                                             )}
                                                         </td>
                                                         <td className="px-6 py-5 text-center bg-emerald-50/50">
