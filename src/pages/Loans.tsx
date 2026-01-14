@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useBanquito } from '../context/BanquitoContext';
-import { Plus, DollarSign, TrendingUp, Clock, Edit2, Trash2, AlertTriangle, ChevronRight } from 'lucide-react';
+import { Plus, DollarSign, TrendingUp, Clock, Edit2, Trash2, AlertTriangle } from 'lucide-react';
 import Modal from '../components/Modal';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -292,12 +292,20 @@ const Loans: React.FC = () => {
         let overdueInterest = 0;
         let breakdown = [];
         let currentDate = new Date(endDate);
-        // Move to first overdue cutoff (1 month after endDate)
-        currentDate.setMonth(currentDate.getMonth() + 1);
 
-        // Iterate while cutoff date is in the past (or today)
-        while (currentDate <= now) {
-            // Find payments made BEFORE this cutoff date
+        // Start checking strictly from the due date
+        // If we are past the due date (now > endDate), the first period has started.
+        // We iterate while the 'milestone' date is earlier than 'now'.
+        // This effectively charges for every 'month started' after the due date.
+
+        while (currentDate < now) {
+            // Find payments made BEFORE OR ON this cutoff date
+            // Note: If payment is made on the exact cutoff date, it reduces the principal for that period's calculation?
+            // Usually, penalty is calculated on the OUTSTANDING balance at that moment.
+            // If I pay on the day of renewal, typically that reduces the balance for the NEXT period.
+            // But for the period just starting?
+            // Let's stick to the user's logic: "con el capital que aun se debe".
+
             const paymentsUntilCutoff = loan.payments.filter(p =>
                 p.paymentType === 'principal' && new Date(p.date) <= currentDate
             );
@@ -426,7 +434,7 @@ const Loans: React.FC = () => {
                 </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {loans.filter(loan => {
                     // Filter by loan status
                     if (loanFilter === 'all') return true;
@@ -456,7 +464,27 @@ const Loans: React.FC = () => {
                     const member = loan.borrowerType === 'member' ? members.find(m => m.id === loan.memberId) : null;
                     const borrowerName = loan.borrowerType === 'member' ? (member?.name || 'Socio Desconocido') : loan.clientName;
 
-                    const isOverdue = new Date() > new Date(loan.endDate) && loan.status !== 'paid';
+                    // Calculate Dynamic Due Date
+                    const getNextDueDate = () => {
+                        const principalPayments = loan.payments
+                            .filter(p => p.paymentType === 'principal')
+                            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+                        // If there are capital payments, take the last one and add 1 month
+                        if (principalPayments.length > 0) {
+                            const lastPaymentDate = new Date(principalPayments[0].date);
+                            // Add 1 month safely
+                            const nextDue = new Date(lastPaymentDate);
+                            nextDue.setMonth(nextDue.getMonth() + 1);
+                            return nextDue;
+                        }
+
+                        // Default to original end date if no capital payments
+                        return new Date(loan.endDate);
+                    };
+
+                    const nextDueDate = getNextDueDate();
+                    const isOverdue = new Date() > nextDueDate && loan.status !== 'paid';
                     const calculations = calculateTotalDue(loan);
                     const progress = Math.min((calculations.totalPaid / calculations.totalDue) * 100, 100);
 
@@ -482,9 +510,13 @@ const Loans: React.FC = () => {
                                                 </p>
                                             )}
                                             <div className="flex flex-col mt-1 space-y-0.5">
+                                                <p className="text-[10px] flex items-center font-medium text-slate-400">
+                                                    <Clock size={10} className="mr-1" />
+                                                    Inicio: {new Date(loan.startDate).toLocaleDateString()}
+                                                </p>
                                                 <p className={`text-[10px] flex items-center font-medium ${isOverdue ? 'text-red-500' : 'text-slate-500'}`}>
                                                     <Clock size={10} className="mr-1" />
-                                                    Vence: {new Date(loan.endDate).toLocaleDateString()}
+                                                    Vence: {nextDueDate.toLocaleDateString()}
                                                 </p>
                                             </div>
                                         </div>
@@ -501,22 +533,17 @@ const Loans: React.FC = () => {
                                             <span className="text-slate-500 font-medium">Monto Prestado</span>
                                             <span className="font-bold text-slate-900 text-sm">${calculations.principal.toFixed(2)}</span>
                                         </div>
-                                        <div className="flex justify-between text-xs items-center px-1.5">
-                                            <span className="text-slate-500 flex items-center">
-                                                <TrendingUp size={11} className="mr-1" />
+
+                                        <div className="flex justify-between text-xs items-center px-1.5 pt-1">
+                                            <span className="text-slate-500 flex items-center font-medium">
+                                                <TrendingUp size={11} className="mr-1 text-orange-500" />
                                                 Interés Base ({loan.interestRate}%)
                                             </span>
-                                            <span className="font-bold text-orange-600 text-xs">+${calculations.baseInterest.toFixed(2)}</span>
+                                            <span className="font-bold text-orange-600 text-xs py-0.5 px-1 bg-orange-50 rounded">
+                                                +${calculations.baseInterest.toFixed(2)}
+                                            </span>
                                         </div>
-                                        {isOverdue && calculations.overdueInterest > 0 && (
-                                            <div className="flex justify-between text-xs items-center px-1.5">
-                                                <span className="text-red-500 flex items-center font-medium">
-                                                    <TrendingUp size={11} className="mr-1" />
-                                                    Interés Mora ({calculations.monthsOverdue} {calculations.monthsOverdue === 1 ? 'mes' : 'meses'})
-                                                </span>
-                                                <span className="font-bold text-red-600 text-xs">+${calculations.overdueInterest.toFixed(2)}</span>
-                                            </div>
-                                        )}
+
                                         <div className="pt-2 border-t border-slate-100 flex justify-between items-end">
                                             <span className="text-xs text-slate-500 font-medium">Total a Pagar</span>
                                             <span className="text-lg font-bold text-slate-900">${calculations.totalDue.toFixed(2)}</span>
@@ -538,28 +565,19 @@ const Loans: React.FC = () => {
                                                 style={{ width: `${progress}%` }}
                                             />
                                         </div>
-
-
                                     </div>
 
-                                    {/* Payment History Summary */}
-                                    {loan.payments.length > 0 && (
-                                        <div className="mt-2 pt-2 border-t border-slate-100">
-                                            <button
-                                                onClick={() => openHistoryModal(loan)}
-                                                className="flex items-center justify-between w-full text-xs font-medium text-slate-700 hover:text-slate-900 transition-colors group/hist"
-                                            >
-                                                <span className="flex items-center whitespace-nowrap text-[10px]">
-                                                    <DollarSign size={11} className="mr-1" />
-                                                    Historial de Pagos ({loan.payments.length})
-                                                </span>
-                                                <div className="flex items-center gap-1 text-blue-600 opacity-0 group-hover/hist:opacity-100 transition-opacity whitespace-nowrap ml-2">
-                                                    <span className="text-[10px]">Ver detalle</span>
-                                                    <ChevronRight size={12} />
-                                                </div>
-                                            </button>
-                                        </div>
-                                    )}
+                                    {/* View Details Button (Replaces inline history) */}
+                                    <div className="mt-3">
+                                        <button
+                                            onClick={() => openHistoryModal(loan)}
+                                            className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-colors"
+                                        >
+                                            <DollarSign size={14} />
+                                            Ver Detalles y Pagos
+                                        </button>
+                                    </div>
+
                                 </div>
 
                                 <div className="bg-white border-t border-slate-100 px-3 py-3 mt-auto">
@@ -934,126 +952,208 @@ const Loans: React.FC = () => {
                 {selectedLoanHistory && (() => {
                     const member = selectedLoanHistory.borrowerType === 'member' ? members.find(m => m.id === selectedLoanHistory.memberId) : null;
                     const borrowerName = selectedLoanHistory.borrowerType === 'member' ? (member?.name || 'Socio Desconocido') : selectedLoanHistory.clientName;
-                    const isOverdue = new Date() > new Date(selectedLoanHistory.endDate) && selectedLoanHistory.status !== 'paid';
+
+                    // Re-calculate local check specifically for the modal
+                    const getNextDueDate = () => {
+                        const principalPayments = selectedLoanHistory.payments
+                            .filter(p => p.paymentType === 'principal')
+                            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+                        let baseDate;
+                        if (principalPayments.length > 0) {
+                            const lastPaymentDate = new Date(principalPayments[0].date);
+                            baseDate = new Date(lastPaymentDate);
+                            baseDate.setMonth(baseDate.getMonth() + 1);
+                        } else {
+                            baseDate = new Date(selectedLoanHistory.endDate);
+                        }
+
+                        // Auto-advance due date if it's in the past (Rolling Due Date)
+                        const today = new Date();
+                        today.setHours(0, 0, 0, 0);
+
+                        // While the due date is strictly in the past, move to the next month to show the NEXT deadline.
+                        // Standard setMonth behavior handles day overflow automatically (e.g. Jan 30 + 1 month -> Mar 2 if non-leap year)
+                        // This matches the user's request for "sumar los dias del mes anterior" in overflow cases.
+                        while (baseDate < today) {
+                            baseDate.setMonth(baseDate.getMonth() + 1);
+                        }
+
+                        return baseDate;
+                    };
+
+                    const nextDueDate = getNextDueDate();
+                    const isOverdue = new Date() > nextDueDate && selectedLoanHistory.status !== 'paid';
                     const calculations = calculateTotalDue(selectedLoanHistory);
 
                     return (
-                        <div className="space-y-5">
-                            {/* Loan Header */}
-                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                                <div className="flex justify-between items-start mb-3">
-                                    <div>
-                                        <h3 className="font-bold text-slate-800 text-lg leading-tight">{borrowerName}</h3>
-                                        {selectedLoanHistory.actionAlias && (
-                                            <p className="text-xs font-bold text-indigo-600 mt-0.5">{selectedLoanHistory.actionAlias}</p>
-                                        )}
-                                        <div className="flex items-center gap-2 mt-2">
-                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border ${selectedLoanHistory.status === 'paid' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                        <div className="space-y-6">
+                            {/* Loan Header Card with Summary */}
+                            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 shadow-sm relative overflow-hidden">
+                                {/* Decorative background elements */}
+                                <div className="absolute top-0 right-0 p-4 opacity-5">
+                                    <DollarSign size={100} className="text-indigo-900" />
+                                </div>
+
+                                <div className="relative z-10">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div>
+                                            <h3 className="font-bold text-slate-800 text-xl leading-tight">{borrowerName}</h3>
+                                            {selectedLoanHistory.actionAlias && (
+                                                <p className="text-sm font-bold text-indigo-600 mt-0.5">{selectedLoanHistory.actionAlias}</p>
+                                            )}
+                                        </div>
+                                        <div className="text-right">
+                                            <span className={`px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wide border shadow-sm ${selectedLoanHistory.status === 'paid' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
                                                 isOverdue ? 'bg-red-50 text-red-700 border-red-100' :
                                                     'bg-blue-50 text-blue-700 border-blue-100'
                                                 }`}>
                                                 {selectedLoanHistory.status === 'paid' ? 'Pagado' : isOverdue ? 'Vencido' : 'Activo'}
                                             </span>
-                                            <span className="text-[10px] text-slate-400 font-medium flex items-center gap-1">
-                                                <Clock size={10} />
-                                                {selectedLoanHistory.status === 'paid' ? 'Finalizado' : (
-                                                    <>Vence: {new Date(selectedLoanHistory.nextDueDate || selectedLoanHistory.endDate).toLocaleDateString()}</>
-                                                )}
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4 mb-4">
+                                        <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                                            <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-1">Monto Original</p>
+                                            <p className="text-lg font-black text-slate-900">${selectedLoanHistory.amount.toFixed(2)}</p>
+                                        </div>
+                                        <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                                            <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-1">Total a Pagar</p>
+                                            <p className="text-lg font-black text-slate-900">${calculations.totalDue.toFixed(2)}</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Dates */}
+                                    <div className="flex gap-4 text-xs text-slate-500 font-medium bg-white/50 p-2 rounded-lg inline-flex">
+                                        <div className="flex items-center gap-1.5">
+                                            <Clock size={12} className="text-slate-400" />
+                                            <span>Inicio: {new Date(selectedLoanHistory.startDate).toLocaleDateString()}</span>
+                                        </div>
+                                        <div className="w-px h-4 bg-slate-300"></div>
+                                        <div className="flex items-center gap-1.5">
+                                            <Clock size={12} className={isOverdue ? "text-red-500" : "text-slate-400"} />
+                                            <span className={isOverdue ? "text-red-600 font-bold" : ""}>
+                                                Vence: {nextDueDate.toLocaleDateString()}
                                             </span>
                                         </div>
                                     </div>
-                                    <div className="text-right">
-                                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-0.5">Monto Original</p>
-                                        <p className="text-base font-black text-slate-900">${selectedLoanHistory.amount.toFixed(2)}</p>
-                                    </div>
                                 </div>
+                            </div>
 
-                                {/* Progress Bar / Mini Stats */}
-                                <div className="flex gap-4 border-t border-slate-200/60 pt-3 mt-3">
-                                    <div className="flex-1">
-                                        <div className="flex justify-between text-[10px] uppercase font-bold text-slate-500 mb-1">
-                                            <span>Pagado</span>
-                                            <span className="text-emerald-600">${selectedLoanHistory.payments.reduce((acc, p) => acc + p.amount, 0).toFixed(2)}</span>
+                            {/* Breakdown Section */}
+                            <div>
+                                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-1 flex items-center gap-2">
+                                    <TrendingUp size={14} />
+                                    Detalle Financiero
+                                </h4>
+                                <div className="bg-white border boundary-slate-100 rounded-xl overflow-hidden divide-y divide-slate-50">
+                                    {/* Base Interest */}
+                                    <div className="p-3 flex justify-between items-center hover:bg-slate-50 transition-colors">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-full bg-orange-50 text-orange-600 flex items-center justify-center">
+                                                <TrendingUp size={14} />
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-bold text-slate-700">Interés Base</p>
+                                                <p className="text-[10px] text-slate-400">Tasa fija del {selectedLoanHistory.interestRate}%</p>
+                                            </div>
                                         </div>
-                                        <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
-                                            <div
-                                                className="bg-emerald-500 h-full rounded-full"
-                                                style={{ width: `${Math.min((selectedLoanHistory.payments.reduce((acc, p) => acc + p.amount, 0) / (selectedLoanHistory.amount + (selectedLoanHistory.amount * (selectedLoanHistory.interestRate / 100)))) * 100, 100)}%` }}
-                                            />
-                                        </div>
+                                        <p className="font-bold text-slate-900">+${calculations.baseInterest.toFixed(2)}</p>
+                                    </div>
+
+                                    {/* Overdue Interest Rows */}
+                                    {calculations.breakdown.length > 0 ? (
+                                        calculations.breakdown.map((item, idx) => (
+                                            <div key={idx} className="p-3 flex justify-between items-center hover:bg-red-50/50 transition-colors bg-red-50/10">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-8 h-8 rounded-full bg-red-100 text-red-600 flex items-center justify-center border border-red-200">
+                                                        <AlertTriangle size={14} />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-sm font-bold text-red-700">Mora Mes {idx + 1}</p>
+                                                        <p className="text-[10px] text-red-500">
+                                                            Calculado el {new Date(item.date).toLocaleDateString()}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="font-bold text-red-700">+${item.interest.toFixed(2)}</p>
+                                                    <p className="text-[9px] text-red-400">sobre ${item.principal.toFixed(2)} pendientes</p>
+                                                </div>
+                                            </div>
+                                        ))
+                                    ) : null}
+
+
+                                    {/* Total Footer */}
+                                    <div className="p-3 bg-slate-50 flex justify-between items-center">
+                                        <p className="text-xs font-bold text-slate-500 uppercase">Total Intereses</p>
+                                        <p className="text-sm font-black text-slate-800">${(calculations.baseInterest + calculations.overdueInterest).toFixed(2)}</p>
                                     </div>
                                 </div>
                             </div>
 
                             {/* Consolidated Transaction History */}
                             <div className="mt-6">
-                                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-1">Historial de Movimientos</h4>
+                                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-1">Historial de Pagos y Abonos</h4>
                                 <div className="max-h-[50vh] overflow-y-auto pr-1 space-y-2">
                                     {(() => {
-                                        // Combine payments and interest charges
                                         const transactions = [
                                             ...selectedLoanHistory.payments.map(p => ({
                                                 ...p,
                                                 type: 'payment', // Credit
                                                 dateObj: new Date(p.date),
-                                                principalBase: undefined // Add checking prop
                                             })),
+                                            // Only showing real payments here as requested ("Historial de Pagos")
+                                            // But if you want to show charges inline in history too, un-comment below
+                                            /*
                                             ...(calculations.breakdown || []).map((b: any) => ({
                                                 id: `int-${b.date.getTime()}`,
-                                                type: 'charge', // Debit
+                                                type: 'charge', 
                                                 paymentType: 'interest_charge',
                                                 amount: b.interest,
                                                 date: b.date.toISOString(),
                                                 dateObj: b.date,
                                                 principalBase: b.principal
                                             }))
+                                            */
                                         ].sort((a, b) => b.dateObj.getTime() - a.dateObj.getTime());
 
                                         if (transactions.length === 0) {
                                             return (
                                                 <div className="text-center py-8 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                                                    <p className="text-sm text-slate-400 font-medium">No hay movimientos registrados</p>
+                                                    <p className="text-sm text-slate-400 font-medium">No hay pagos registrados</p>
                                                 </div>
                                             );
                                         }
 
                                         return transactions.map((item) => (
-                                            <div key={item.id} className={`flex justify-between items-center p-3 border rounded-xl transition-all group ${item.type === 'charge'
-                                                ? 'bg-red-50 border-red-100'
-                                                : 'bg-white border-slate-100 hover:border-slate-200 hover:shadow-sm'
+                                            <div key={item.id} className={`flex justify-between items-center p-3 border rounded-xl transition-all group ${'bg-white border-slate-100 hover:border-slate-200 hover:shadow-sm'
                                                 }`}>
                                                 <div className="flex items-center gap-3">
-                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center border ${item.type === 'charge'
-                                                        ? 'bg-red-100 text-red-600 border-red-200'
-                                                        : item.paymentType === 'principal' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-purple-50 text-purple-600 border-purple-100'
+                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center border ${item.paymentType === 'principal' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-purple-50 text-purple-600 border-purple-100'
                                                         }`}>
-                                                        {item.type === 'charge' ? <TrendingUp size={14} strokeWidth={2.5} /> : <DollarSign size={14} strokeWidth={2.5} />}
+                                                        <DollarSign size={14} strokeWidth={2.5} />
                                                     </div>
                                                     <div>
-                                                        <p className={`font-bold text-sm ${item.type === 'charge' ? 'text-red-800' : 'text-slate-800'}`}>
+                                                        <p className={`font-bold text-sm text-slate-800`}>
                                                             ${item.amount.toFixed(2)}
                                                         </p>
                                                         <div className="flex items-center gap-2">
-                                                            <span className={`text-[9px] font-bold px-1.5 py-px rounded-md uppercase tracking-wide ${item.type === 'charge'
-                                                                ? 'bg-red-200 text-red-800'
-                                                                : item.paymentType === 'principal' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
+                                                            <span className={`text-[9px] font-bold px-1.5 py-px rounded-md uppercase tracking-wide ${item.paymentType === 'principal' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
                                                                 }`}>
-                                                                {item.type === 'charge' ? 'Mora Generada' : item.paymentType === 'principal' ? 'Abono Capital' : 'Abono Interés'}
+                                                                {item.paymentType === 'principal' ? 'Abono Capital' : 'Abono Interés'}
                                                             </span>
-                                                            <span className={`text-[10px] font-medium ${item.type === 'charge' ? 'text-red-600' : 'text-slate-400'}`}>
-                                                                {item.type === 'charge' ? item.dateObj.toLocaleDateString() : item.dateObj.toLocaleString()}
+                                                            <span className={`text-[10px] font-medium text-slate-400`}>
+                                                                {item.dateObj.toLocaleDateString()}
                                                             </span>
                                                         </div>
-                                                        {item.type === 'charge' && (
-                                                            <p className="text-[9px] text-red-500 mt-0.5">
-                                                                (10% de ${item.principalBase?.toFixed(2)} capital pendiente)
-                                                            </p>
-                                                        )}
                                                     </div>
                                                 </div>
 
-                                                {item.type === 'payment' && currentUser?.role !== 'socio' && (
-                                                    <div className="flex items-center gap-1 opacity-100 bg-white shadow-sm border border-slate-100 rounded-lg p-0.5">
+                                                {currentUser?.role !== 'socio' && (
+                                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white shadow-sm border border-slate-100 rounded-lg p-0.5">
                                                         <button
                                                             onClick={() => handleEditPaymentFromHistory(selectedLoanHistory.id, item as any)}
                                                             className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-all"
