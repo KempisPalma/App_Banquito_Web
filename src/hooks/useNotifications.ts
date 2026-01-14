@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useBanquito } from '../context/BanquitoContext';
-import type { Loan, Activity } from '../types';
+
 
 export interface Notification {
     id: string;
