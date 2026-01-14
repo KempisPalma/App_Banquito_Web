@@ -7,9 +7,10 @@ interface ModalProps {
     onClose: () => void;
     title: string;
     children: React.ReactNode;
+    maxWidth?: string;
 }
 
-const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children }) => {
+const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, maxWidth = 'max-w-md' }) => {
     useEffect(() => {
         const handleEscape = (e: KeyboardEvent) => {
             if (e.key === 'Escape') onClose();
@@ -34,9 +35,9 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children }) => {
                             initial={{ opacity: 0, scale: 0.95, y: 20 }}
                             animate={{ opacity: 1, scale: 1, y: 0 }}
                             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                            className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden pointer-events-auto"
+                            className={`bg-white rounded-2xl shadow-2xl w-full ${maxWidth} max-h-[85vh] flex flex-col overflow-hidden pointer-events-auto`}
                         >
-                            <div className="flex items-center justify-between p-6 border-b border-slate-100">
+                            <div className="flex items-center justify-between p-6 border-b border-slate-100 shrink-0">
                                 <h3 className="text-xl font-bold text-slate-800">{title}</h3>
                                 <button
                                     onClick={onClose}
@@ -45,7 +46,7 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children }) => {
                                     <X size={20} />
                                 </button>
                             </div>
-                            <div className="p-6">
+                            <div className="p-6 overflow-y-auto">
                                 {children}
                             </div>
                         </motion.div>
