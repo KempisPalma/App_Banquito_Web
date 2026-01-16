@@ -193,9 +193,15 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     // Profile Modal Component
     const ProfileModal = ({ onClose }: { onClose: () => void }) => {
         const { currentUser, members, updateMember } = useBanquito();
-        const linkedMember = currentUser?.role === 'socio' && currentUser.username
-            ? members.find(m => String(m.cedula) === String(currentUser.username))
+
+        console.log('Current User:', currentUser);
+        console.log('Members:', members);
+
+        const linkedMember = currentUser?.memberId
+            ? members.find(m => m.id === currentUser.memberId)
             : null;
+
+        console.log('Linked Member:', linkedMember);
 
         const [formData, setFormData] = React.useState({
             name: currentUser?.name || '',
@@ -284,9 +290,8 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                                 <input
                                     type="text"
                                     value={formData.name}
-                                    onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                    className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none transition-all"
-                                    required
+                                    readOnly
+                                    className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-600 cursor-not-allowed"
                                 />
                             </div>
                         </div>

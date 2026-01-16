@@ -34,13 +34,21 @@ app.post('/api/auth/login', async (req, res) => {
             return res.status(401).json({ success: false, error: 'Credenciales inválidas' });
         }
 
-        // Fix JSON fields if strings (Supabase sometimes returns objects, sometimes strings depending on client)
-        // Usually Supabase returns objects for JSONB.
-        if (typeof user.permissions === 'string') {
-            try { user.permissions = JSON.parse(user.permissions); } catch (e) { user.permissions = []; }
-        }
+        // Transform to camelCase and fix JSON fields
+        const transformedUser = {
+            id: user.id,
+            username: user.username,
+            password: user.password,
+            name: user.name,
+            role: user.role,
+            memberId: user.member_id,
+            permissions: typeof user.permissions === 'string'
+                ? ((() => { try { return JSON.parse(user.permissions); } catch (e) { return []; } })())
+                : (user.permissions || []),
+            active: user.active
+        };
 
-        res.json({ success: true, user });
+        res.json({ success: true, user: transformedUser });
     } catch (err) {
         handleError(res, err);
     }
@@ -111,18 +119,24 @@ app.get('/api/users', async (req, res) => {
     try {
         const { data: users, error } = await supabase
             .from('users')
-            .select('*')
-            .order('created_at', { ascending: true });
+            .select('*');
         if (error) throw error;
 
-        // Ensure permissions are proper objects (Supabase does this automatically for JSONB usually)
-        users.forEach(u => {
-            if (typeof u.permissions === 'string') {
-                try { u.permissions = JSON.parse(u.permissions); } catch (e) { u.permissions = []; }
-            }
-        });
+        // Transform snake_case to camelCase and ensure permissions are proper objects
+        const transformedUsers = users.map(u => ({
+            id: u.id,
+            username: u.username,
+            password: u.password,
+            name: u.name,
+            role: u.role,
+            memberId: u.member_id,
+            permissions: typeof u.permissions === 'string'
+                ? ((() => { try { return JSON.parse(u.permissions); } catch (e) { return []; } })())
+                : (u.permissions || []),
+            active: u.active
+        }));
 
-        res.json(users);
+        res.json(transformedUsers);
     } catch (err) {
         handleError(res, err);
     }

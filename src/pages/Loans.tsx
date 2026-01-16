@@ -47,15 +47,7 @@ const Loans: React.FC = () => {
     const [deleteLoanConfirmOpen, setDeleteLoanConfirmOpen] = useState(false);
     const [loanToDelete, setLoanToDelete] = useState<{ loanId: string; borrowerName: string; amount: number } | null>(null);
 
-    // Auto-calculate end date (1 month)
-    useEffect(() => {
-        if (formData.startDate) {
-            const start = new Date(formData.startDate);
-            const end = new Date(start);
-            end.setMonth(end.getMonth() + 1);
-            setFormData(prev => ({ ...prev, endDate: end.toISOString().split('T')[0] }));
-        }
-    }, [formData.startDate]);
+
 
     // Auto-set interest based on borrower type
     useEffect(() => {
@@ -84,6 +76,19 @@ const Loans: React.FC = () => {
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+
+        // Helper to convert input date (YYYY-MM-DD) to ISO string at Local Midnight
+        // This prevents the "UTC Midnight = Previous Day Local" issue
+        const toIsoDate = (dateStr: string) => {
+            if (!dateStr) return '';
+            // Append local midnight time so Date(...) constructs it in local time
+            // Then toISOString() converts to UTC correctly
+            return new Date(dateStr + 'T00:00:00').toISOString();
+        };
+
+        const startDateIso = toIsoDate(formData.startDate);
+        const endDateIso = toIsoDate(formData.endDate);
+
         if (isEditMode && editingLoanId) {
             // Update existing loan
             updateLoan(editingLoanId, {
@@ -93,8 +98,8 @@ const Loans: React.FC = () => {
                 clientName: formData.borrowerType === 'external' ? formData.clientName : undefined,
                 amount: Number(formData.amount),
                 interestRate: Number(formData.interestRate),
-                startDate: formData.startDate,
-                endDate: formData.endDate
+                startDate: startDateIso,
+                endDate: endDateIso
             });
         } else {
             // Create new loan
@@ -106,8 +111,8 @@ const Loans: React.FC = () => {
                 clientName: formData.borrowerType === 'external' ? formData.clientName : undefined,
                 amount: Number(formData.amount),
                 interestRate: Number(formData.interestRate),
-                startDate: formData.startDate,
-                endDate: formData.endDate,
+                startDate: startDateIso,
+                endDate: endDateIso,
                 status: 'active',
                 payments: [],
                 pendingPrincipal: formData.amount,
@@ -125,6 +130,49 @@ const Loans: React.FC = () => {
     };
 
     const openEditModal = (loan: typeof loans[0]) => {
+        // Helper to safely format any date string to YYYY-MM-DD for input
+        const toInputDate = (dateStr: string) => {
+            if (!dateStr) return '';
+            // If already YYYY-MM-DD, return as is
+            if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+
+            // Otherwise parse as date and return local YYYY-MM-DD
+            const d = new Date(dateStr);
+            if (isNaN(d.getTime())) return '';
+
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        };
+
+        // Calculate dynamic due date based on last principal payment
+        // We use local date parts to avoid UTC timezone shifts
+        let currentDueDateStr = toInputDate(loan.endDate);
+
+        const principalPayments = loan.payments
+            .filter(p => p.paymentType === 'principal')
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+        if (principalPayments.length > 0) {
+            // Parse the payment date string safely
+            const lastPaymentDateStr = principalPayments[0].date;
+
+            // Create a Local Date object to avoid UTC shift
+            let lastPaymentDate: Date;
+            if (lastPaymentDateStr.includes('T')) {
+                lastPaymentDate = new Date(lastPaymentDateStr);
+            } else {
+                // If simple YYYY-MM-DD, manually construct local midnight
+                const [y, m, d] = lastPaymentDateStr.split('-').map(Number);
+                lastPaymentDate = new Date(y, m - 1, d);
+            }
+
+            // Create new date for calculation
+            const nextDue = new Date(lastPaymentDate);
+            nextDue.setMonth(nextDue.getMonth() + 1);
+
+            // Format back to YYYY-MM-DD using Local getters
+            currentDueDateStr = `${nextDue.getFullYear()}-${String(nextDue.getMonth() + 1).padStart(2, '0')}-${String(nextDue.getDate()).padStart(2, '0')}`;
+        }
+
         setFormData({
             borrowerType: loan.borrowerType,
             memberId: loan.memberId || '',
@@ -132,8 +180,8 @@ const Loans: React.FC = () => {
             clientName: loan.clientName || '',
             amount: loan.amount,
             interestRate: loan.interestRate,
-            startDate: loan.startDate,
-            endDate: loan.endDate
+            startDate: toInputDate(loan.startDate),
+            endDate: currentDueDateStr
         });
         setEditingLoanId(loan.id);
         setIsEditMode(true);
@@ -437,165 +485,166 @@ const Loans: React.FC = () => {
                         return true;
                     }
                     return true;
-                }).map((loan, index) => {
-                    const member = loan.borrowerType === 'member' ? members.find(m => m.id === loan.memberId) : null;
-                    const borrowerName = loan.borrowerType === 'member' ? (member?.name || 'Socio Desconocido') : loan.clientName;
+                }).sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime())
+                    .map((loan, index) => {
+                        const member = loan.borrowerType === 'member' ? members.find(m => m.id === loan.memberId) : null;
+                        const borrowerName = loan.borrowerType === 'member' ? (member?.name || 'Socio Desconocido') : loan.clientName;
 
-                    // Calculate Dynamic Due Date
-                    const getNextDueDate = () => {
-                        const principalPayments = loan.payments
-                            .filter(p => p.paymentType === 'principal')
-                            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                        // Calculate Dynamic Due Date
+                        const getNextDueDate = () => {
+                            const principalPayments = loan.payments
+                                .filter(p => p.paymentType === 'principal')
+                                .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-                        // If there are capital payments, take the last one and add 1 month
-                        if (principalPayments.length > 0) {
-                            const lastPaymentDate = new Date(principalPayments[0].date);
-                            // Add 1 month safely
-                            const nextDue = new Date(lastPaymentDate);
-                            nextDue.setMonth(nextDue.getMonth() + 1);
-                            return nextDue;
-                        }
+                            // If there are capital payments, take the last one and add 1 month
+                            if (principalPayments.length > 0) {
+                                const lastPaymentDate = new Date(principalPayments[0].date);
+                                // Add 1 month safely
+                                const nextDue = new Date(lastPaymentDate);
+                                nextDue.setMonth(nextDue.getMonth() + 1);
+                                return nextDue;
+                            }
 
-                        // Default to original end date if no capital payments
-                        return new Date(loan.endDate);
-                    };
+                            // Default to original end date if no capital payments
+                            return new Date(loan.endDate);
+                        };
 
-                    const nextDueDate = getNextDueDate();
-                    const isOverdue = new Date() > nextDueDate && loan.status !== 'paid';
-                    const calculations = calculateTotalDue(loan);
-                    const progress = Math.min((calculations.totalPaid / calculations.totalDue) * 100, 100);
+                        const nextDueDate = getNextDueDate();
+                        const isOverdue = new Date() > nextDueDate && loan.status !== 'paid';
+                        const calculations = calculateTotalDue(loan);
+                        const progress = Math.min((calculations.totalPaid / calculations.totalDue) * 100, 100);
 
 
-                    return (
-                        <motion.div
-                            key={loan.id}
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: index * 0.1 }}
-                            className=""
-                        >
-                            <Card className="flex flex-col border-none shadow-lg shadow-slate-200/40 hover:shadow-xl hover:shadow-slate-300/50 transition-all duration-300 overflow-hidden group rounded-2xl" padding="none">
-                                <div className="p-4 flex-1">
-                                    <div className="flex justify-between items-start mb-3">
-                                        <div>
-                                            <div className="flex items-center space-x-1.5">
-                                                <h3 className="font-bold text-base text-slate-800">{borrowerName}</h3>
+                        return (
+                            <motion.div
+                                key={loan.id}
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: index * 0.1 }}
+                                className=""
+                            >
+                                <Card className="flex flex-col border-none shadow-lg shadow-slate-200/40 hover:shadow-xl hover:shadow-slate-300/50 transition-all duration-300 overflow-hidden group rounded-2xl" padding="none">
+                                    <div className="p-4 flex-1">
+                                        <div className="flex justify-between items-start mb-3">
+                                            <div>
+                                                <div className="flex items-center space-x-1.5">
+                                                    <h3 className="font-bold text-base text-slate-800">{borrowerName}</h3>
+                                                </div>
+                                                {loan.actionAlias && (
+                                                    <p className="text-xs text-indigo-600 font-bold mt-0.5">
+                                                        {loan.actionAlias}
+                                                    </p>
+                                                )}
+                                                <div className="flex flex-col mt-1 space-y-0.5">
+                                                    <p className="text-[10px] flex items-center font-medium text-slate-400">
+                                                        <Clock size={10} className="mr-1" />
+                                                        Inicio: {new Date(loan.startDate).toLocaleDateString()}
+                                                    </p>
+                                                    <p className={`text-[10px] flex items-center font-medium ${isOverdue ? 'text-red-500' : 'text-slate-500'}`}>
+                                                        <Clock size={10} className="mr-1" />
+                                                        Vence: {nextDueDate.toLocaleDateString()}
+                                                    </p>
+                                                </div>
                                             </div>
-                                            {loan.actionAlias && (
-                                                <p className="text-xs text-indigo-600 font-bold mt-0.5">
-                                                    {loan.actionAlias}
-                                                </p>
-                                            )}
-                                            <div className="flex flex-col mt-1 space-y-0.5">
-                                                <p className="text-[10px] flex items-center font-medium text-slate-400">
-                                                    <Clock size={10} className="mr-1" />
-                                                    Inicio: {new Date(loan.startDate).toLocaleDateString()}
-                                                </p>
-                                                <p className={`text-[10px] flex items-center font-medium ${isOverdue ? 'text-red-500' : 'text-slate-500'}`}>
-                                                    <Clock size={10} className="mr-1" />
-                                                    Vence: {nextDueDate.toLocaleDateString()}
-                                                </p>
-                                            </div>
-                                        </div>
-                                        <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${Math.abs(calculations.totalPaid - calculations.totalDue) < 0.1 || calculations.totalPaid >= calculations.totalDue
-                                            ? 'bg-emerald-100 text-emerald-700'
-                                            : 'bg-orange-100 text-orange-700'
-                                            }`}>
-                                            {Math.abs(calculations.totalPaid - calculations.totalDue) < 0.1 || calculations.totalPaid >= calculations.totalDue ? 'PAGADO' : 'ACTIVO'}
-                                        </span>
-                                    </div>
-
-                                    <div className="space-y-2 mb-3">
-                                        <div className="flex justify-between text-xs items-center p-2 rounded-lg bg-slate-50">
-                                            <span className="text-slate-500 font-medium">Monto Prestado</span>
-                                            <span className="font-bold text-slate-900 text-sm">${calculations.principal.toFixed(2)}</span>
-                                        </div>
-
-                                        <div className="flex justify-between text-xs items-center px-1.5 pt-1">
-                                            <span className="text-slate-500 flex items-center font-medium">
-                                                <TrendingUp size={11} className="mr-1 text-orange-500" />
-                                                Interés Base ({loan.interestRate}%)
-                                            </span>
-                                            <span className="font-bold text-orange-600 text-xs py-0.5 px-1 bg-orange-50 rounded">
-                                                +${calculations.baseInterest.toFixed(2)}
+                                            <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${Math.abs(calculations.totalPaid - calculations.totalDue) < 0.1 || calculations.totalPaid >= calculations.totalDue
+                                                ? 'bg-emerald-100 text-emerald-700'
+                                                : 'bg-orange-100 text-orange-700'
+                                                }`}>
+                                                {Math.abs(calculations.totalPaid - calculations.totalDue) < 0.1 || calculations.totalPaid >= calculations.totalDue ? 'PAGADO' : 'ACTIVO'}
                                             </span>
                                         </div>
 
-                                        <div className="pt-2 border-t border-slate-100 flex justify-between items-end">
-                                            <span className="text-xs text-slate-500 font-medium">Total a Pagar</span>
-                                            <span className="text-lg font-bold text-slate-900">${calculations.remaining.toFixed(2)}</span>
-                                        </div>
-                                    </div>
+                                        <div className="space-y-2 mb-3">
+                                            <div className="flex justify-between text-xs items-center p-2 rounded-lg bg-slate-50">
+                                                <span className="text-slate-500 font-medium">Monto Prestado</span>
+                                                <span className="font-bold text-slate-900 text-sm">${calculations.principal.toFixed(2)}</span>
+                                            </div>
 
-                                    {/* Progress & Balances */}
-                                    <div className="space-y-3 mb-2">
-                                        <div className="flex justify-between text-[10px] uppercase font-bold text-slate-500">
-                                            <span>Progreso</span>
-                                            <div className="flex items-center gap-1">
-                                                <span className="text-slate-400 font-normal normal-case mr-1">
-                                                    (${calculations.totalPaid.toFixed(2)} de ${calculations.totalDue.toFixed(2)})
+                                            <div className="flex justify-between text-xs items-center px-1.5 pt-1">
+                                                <span className="text-slate-500 flex items-center font-medium">
+                                                    <TrendingUp size={11} className="mr-1 text-orange-500" />
+                                                    Interés Base ({loan.interestRate}%)
                                                 </span>
-                                                <span className="text-emerald-600">{Math.round(progress)}%</span>
+                                                <span className="font-bold text-orange-600 text-xs py-0.5 px-1 bg-orange-50 rounded">
+                                                    +${calculations.baseInterest.toFixed(2)}
+                                                </span>
+                                            </div>
+
+                                            <div className="pt-2 border-t border-slate-100 flex justify-between items-end">
+                                                <span className="text-xs text-slate-500 font-medium">Total a Pagar</span>
+                                                <span className="text-lg font-bold text-slate-900">${calculations.remaining.toFixed(2)}</span>
                                             </div>
                                         </div>
-                                        <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                                            <div
-                                                className="bg-emerald-500 h-full rounded-full transition-all duration-500"
-                                                style={{ width: `${progress}%` }}
-                                            />
+
+                                        {/* Progress & Balances */}
+                                        <div className="space-y-3 mb-2">
+                                            <div className="flex justify-between text-[10px] uppercase font-bold text-slate-500">
+                                                <span>Progreso</span>
+                                                <div className="flex items-center gap-1">
+                                                    <span className="text-slate-400 font-normal normal-case mr-1">
+                                                        (${calculations.totalPaid.toFixed(2)} de ${calculations.totalDue.toFixed(2)})
+                                                    </span>
+                                                    <span className="text-emerald-600">{Math.round(progress)}%</span>
+                                                </div>
+                                            </div>
+                                            <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                                                <div
+                                                    className="bg-emerald-500 h-full rounded-full transition-all duration-500"
+                                                    style={{ width: `${progress}%` }}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* View Details Button (Replaces inline history) */}
+                                        <div className="mt-3">
+                                            <button
+                                                onClick={() => openHistoryModal(loan)}
+                                                className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-colors"
+                                            >
+                                                <DollarSign size={14} />
+                                                Ver Detalles y Pagos
+                                            </button>
+                                        </div>
+
+                                    </div>
+
+                                    <div className="bg-white border-t border-slate-100 px-3 py-3 mt-auto">
+                                        <div className="flex items-center justify-between gap-2">
+                                            {currentUser?.role !== 'socio' ? (
+                                                <>
+                                                    <button
+                                                        onClick={() => openEditModal(loan)}
+                                                        className="p-1.5 rounded-lg text-blue-600 bg-blue-50 border border-blue-100 hover:bg-blue-500 hover:text-white hover:shadow-md transition-all duration-300 transform active:scale-95"
+                                                        title="Editar préstamo"
+                                                    >
+                                                        <Edit2 size={16} />
+                                                    </button>
+
+                                                    <button
+                                                        onClick={() => openPaymentModal(loan.id)}
+                                                        disabled={calculations.remaining <= 0.01}
+                                                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-md shadow-emerald-500/20 hover:shadow-lg hover:shadow-emerald-500/30 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 group/btn disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none"
+                                                        title={calculations.remaining <= 0.01 ? "Préstamo pagado" : "Registrar abono"}
+                                                    >
+                                                        <DollarSign size={16} className="group-hover/btn:rotate-12 transition-transform" />
+                                                        <span>ABONAR</span>
+                                                    </button>
+
+                                                    <button
+                                                        onClick={() => handleDeleteLoan(loan.id, borrowerName || '', loan.amount)}
+                                                        className="p-1.5 rounded-lg text-rose-600 bg-rose-50 border border-rose-100 hover:bg-rose-500 hover:text-white hover:shadow-md transition-all duration-300 transform active:scale-95"
+                                                        title="Eliminar préstamo"
+                                                    >
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </>
+                                            ) : null}
                                         </div>
                                     </div>
-
-                                    {/* View Details Button (Replaces inline history) */}
-                                    <div className="mt-3">
-                                        <button
-                                            onClick={() => openHistoryModal(loan)}
-                                            className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-colors"
-                                        >
-                                            <DollarSign size={14} />
-                                            Ver Detalles y Pagos
-                                        </button>
-                                    </div>
-
-                                </div>
-
-                                <div className="bg-white border-t border-slate-100 px-3 py-3 mt-auto">
-                                    <div className="flex items-center justify-between gap-2">
-                                        {currentUser?.role !== 'socio' ? (
-                                            <>
-                                                <button
-                                                    onClick={() => openEditModal(loan)}
-                                                    className="p-1.5 rounded-lg text-blue-600 bg-blue-50 border border-blue-100 hover:bg-blue-500 hover:text-white hover:shadow-md transition-all duration-300 transform active:scale-95"
-                                                    title="Editar préstamo"
-                                                >
-                                                    <Edit2 size={16} />
-                                                </button>
-
-                                                <button
-                                                    onClick={() => openPaymentModal(loan.id)}
-                                                    disabled={calculations.remaining <= 0.01}
-                                                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-md shadow-emerald-500/20 hover:shadow-lg hover:shadow-emerald-500/30 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 group/btn disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none"
-                                                    title={calculations.remaining <= 0.01 ? "Préstamo pagado" : "Registrar abono"}
-                                                >
-                                                    <DollarSign size={16} className="group-hover/btn:rotate-12 transition-transform" />
-                                                    <span>ABONAR</span>
-                                                </button>
-
-                                                <button
-                                                    onClick={() => handleDeleteLoan(loan.id, borrowerName || '', loan.amount)}
-                                                    className="p-1.5 rounded-lg text-rose-600 bg-rose-50 border border-rose-100 hover:bg-rose-500 hover:text-white hover:shadow-md transition-all duration-300 transform active:scale-95"
-                                                    title="Eliminar préstamo"
-                                                >
-                                                    <Trash2 size={16} />
-                                                </button>
-                                            </>
-                                        ) : null}
-                                    </div>
-                                </div>
-                            </Card>
-                        </motion.div>
-                    );
-                })}
+                                </Card>
+                            </motion.div>
+                        );
+                    })}
             </div>
 
             {/* New/Edit Loan Modal */}
@@ -711,7 +760,24 @@ const Loans: React.FC = () => {
                                 type="date"
                                 required
                                 value={formData.startDate}
-                                onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                                onChange={(e) => {
+                                    const newStartDate = e.target.value;
+                                    setFormData(prev => {
+                                        // Only auto-update end date if it's NOT edit mode (fresh loan) 
+                                        // OR if you want it to always update when start date changes?
+                                        // Usually safer to always update IF the user explicitly changes start date.
+
+                                        const start = new Date(newStartDate);
+                                        const end = new Date(start);
+                                        end.setMonth(end.getMonth() + 1);
+
+                                        return {
+                                            ...prev,
+                                            startDate: newStartDate,
+                                            endDate: end.toISOString().split('T')[0]
+                                        };
+                                    });
+                                }}
                                 className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
                             />
                         </div>
@@ -766,7 +832,20 @@ const Loans: React.FC = () => {
                     <div className={isEditingPayment ? "" : "grid grid-cols-2 gap-4"}>
                         {(!isEditingPayment || editingPaymentType === 'principal') && (
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1.5">Capital ($)</label>
+                                <div className="flex justify-between mb-1.5 items-center">
+                                    <label className="block text-sm font-medium text-slate-700">Capital ($)</label>
+                                    {selectedLoanId && (() => {
+                                        const loan = loans.find(l => l.id === selectedLoanId);
+                                        if (!loan) return null;
+                                        const paidPrincipal = loan.payments.filter(p => p.paymentType === 'principal').reduce((a, c) => a + c.amount, 0);
+                                        const pendingPrincipal = Math.max(0, loan.amount - paidPrincipal);
+                                        return (
+                                            <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                                                Debe: ${pendingPrincipal.toFixed(2)}
+                                            </span>
+                                        );
+                                    })()}
+                                </div>
                                 <input
                                     type="number"
                                     min="0"
@@ -787,7 +866,22 @@ const Loans: React.FC = () => {
 
                         {(!isEditingPayment || editingPaymentType === 'interest') && (
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1.5">Interés ($)</label>
+                                <div className="flex justify-between mb-1.5 items-center">
+                                    <label className="block text-sm font-medium text-slate-700">Interés ($)</label>
+                                    {selectedLoanId && (() => {
+                                        const loan = loans.find(l => l.id === selectedLoanId);
+                                        if (!loan) return null;
+                                        const calcs = calculateTotalDue(loan);
+                                        const paidInterest = loan.payments.filter(p => p.paymentType === 'interest').reduce((a, c) => a + c.amount, 0);
+                                        // Total interest due is baseInterest + overdueInterest (from calcs)
+                                        const pendingInterest = Math.max(0, calcs.totalInterest - paidInterest);
+                                        return (
+                                            <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                                                Debe: ${pendingInterest.toFixed(2)}
+                                            </span>
+                                        );
+                                    })()}
+                                </div>
                                 <input
                                     type="number"
                                     min="0"
@@ -800,11 +894,13 @@ const Loans: React.FC = () => {
                                         }
                                     }}
                                     placeholder="0.00"
-                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all"
+                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                                 />
                                 <p className="text-xs text-slate-500 mt-1">Pago a intereses</p>
                             </div>
                         )}
+
+
                     </div>
 
                     {(paymentPrincipalAmount <= 0 && paymentInterestAmount <= 0) && (
