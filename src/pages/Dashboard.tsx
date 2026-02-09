@@ -6,7 +6,7 @@ import { Card } from '../components/ui/Card';
 import Modal from '../components/Modal';
 import { motion } from 'framer-motion';
 
-const StatCard: React.FC<{ title: string; value: string; icon: any; color: string; trend?: string; onClick?: () => void }> = ({ title, value, icon: Icon, color, trend, onClick }) => {
+const StatCard: React.FC<{ title: string; value: string; icon: any; color: string; trend?: string; onClick?: () => void; children?: React.ReactNode }> = ({ title, value, icon: Icon, color, trend, onClick, children }) => {
     // Map the input color class to a style object
     const getStyle = (colorClass: string) => {
         switch (colorClass) {
@@ -75,6 +75,12 @@ const StatCard: React.FC<{ title: string; value: string; icon: any; color: strin
                     <p className="text-sm text-slate-500 font-medium">{title}</p>
                     <h3 className="text-3xl font-black text-slate-800 tracking-tight">{value}</h3>
                 </div>
+
+                {children && (
+                    <div className="mt-4 pt-4 border-t border-slate-100">
+                        {children}
+                    </div>
+                )}
             </div>
         </Card>
     );
@@ -82,7 +88,7 @@ const StatCard: React.FC<{ title: string; value: string; icon: any; color: strin
 
 const Dashboard: React.FC = () => {
     const navigate = useNavigate();
-    const { members, weeklyPayments, loans, monthlyFees, currentUser } = useBanquito();
+    const { members, weeklyPayments, loans, monthlyFees, activities, memberActivities, currentUser } = useBanquito();
     const [isMembersModalOpen, setIsMembersModalOpen] = React.useState(false);
 
     const isSocio = currentUser?.role === 'socio';
@@ -120,7 +126,35 @@ const Dashboard: React.FC = () => {
             filteredMonthlyFees.reduce((acc, curr) => acc + curr.amount, 0);
     }, [filteredWeeklyPayments, filteredMonthlyFees]);
 
+    // Calculate Pending Loans (Principal + Interest - Paid)
+    const pendingLoansAmount = React.useMemo(() => {
+        return filteredLoans.reduce((acc, loan) => {
+            if (loan.status === 'paid') return acc;
+            const totalPaid = loan.payments.reduce((p, c) => p + c.amount, 0);
+            const interestAmount = loan.amount * (loan.interestRate / 100);
+            const totalDue = loan.amount + interestAmount;
+            return acc + (totalDue - totalPaid);
+        }, 0);
+    }, [filteredLoans]);
 
+    // Calculate Pending Activities (Expected - Paid)
+    const pendingActivitiesAmount = React.useMemo(() => {
+        // If socio, filter memberActivities specifically for them
+        const relevantMAs = isSocio && currentUser?.memberId
+            ? memberActivities.filter(ma => ma.memberId === currentUser.memberId)
+            : memberActivities;
+
+        return relevantMAs.reduce((acc, ma) => {
+            const activity = activities.find(a => a.id === ma.activityId);
+            if (!activity) return acc;
+
+            const expected = activity.ticketPrice * activity.totalTicketsPerMember;
+            const pending = Math.max(0, expected - ma.amountPaid);
+            return acc + pending;
+        }, 0);
+    }, [memberActivities, activities, isSocio, currentUser]);
+
+    const projectedTotal = totalSavings + pendingLoansAmount + pendingActivitiesAmount;
 
     const activeLoans = React.useMemo(() => {
         return filteredLoans.filter(l => l.status !== 'paid').length;
@@ -190,8 +224,26 @@ const Dashboard: React.FC = () => {
                         value={`$${totalSavings.toFixed(2)}`}
                         icon={DollarSign}
                         color="bg-emerald-500"
-                        trend={isSocio ? undefined : "+12% vs mes anterior"}
-                    />
+                    >
+                        <div className="space-y-1 text-xs">
+                            <div className="flex justify-between text-slate-500">
+                                <span>Dinero en Caja:</span>
+                                <span>${totalSavings.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between text-slate-500">
+                                <span>Por Cobrar (Préstamos):</span>
+                                <span>${pendingLoansAmount.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between text-slate-500">
+                                <span>Por Cobrar (Actividades):</span>
+                                <span>${pendingActivitiesAmount.toFixed(2)}</span>
+                            </div>
+                            <div className="pt-2 mt-2 border-t border-dashed border-emerald-200 flex justify-between font-bold text-emerald-700">
+                                <span>Proyección Total:</span>
+                                <span>${projectedTotal.toFixed(2)}</span>
+                            </div>
+                        </div>
+                    </StatCard>
                 </motion.div>
                 <motion.div variants={item}>
                     <StatCard

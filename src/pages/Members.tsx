@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useBanquito } from '../context/BanquitoContext';
-import { Search, Edit2, Trash2, UserPlus, Phone, Calendar, CheckCircle, XCircle, Plus, X as XIcon, CreditCard, AlertTriangle } from 'lucide-react';
+import { Search, Edit2, Trash2, UserPlus, Phone, Calendar, CheckCircle, XCircle, Plus, X as XIcon, CreditCard, AlertTriangle, Printer } from 'lucide-react';
 import Modal from '../components/Modal';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -15,9 +15,11 @@ const Members: React.FC = () => {
         cedula: '',
         aliases: [''] as string[],
         phone: '',
-        active: true
+        active: true,
+        joinedDate: new Date().toISOString().split('T')[0]
     });
     const [searchTerm, setSearchTerm] = useState('');
+    const [selectedYear, setSelectedYear] = useState<string>('all');
     const [cedulaError, setCedulaError] = useState('');
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const [memberToDelete, setMemberToDelete] = useState<{ id: string; name: string; cedula?: string } | null>(null);
@@ -53,6 +55,8 @@ const Members: React.FC = () => {
             return;
         }
 
+
+
         // Process aliases: auto-number empty ones
         const processedAliases = formData.aliases.map((alias, index) => {
             if (alias.trim() === '') {
@@ -61,13 +65,20 @@ const Members: React.FC = () => {
             return alias.trim();
         });
 
+        // Handle date conversion to ensure it matches the user's local timezone (UTC-5 for Ecuador)
+        // We create a date at midnight LOCAL time, which will result in the correct UTC offset (e.g. 05:00Z)
+        const [y, m, d] = formData.joinedDate.split('-').map(Number);
+        const localDate = new Date(y, m - 1, d);
+        const isoDate = localDate.toISOString();
+
         if (editingId) {
             updateMember(editingId, {
                 name: formData.name.trim(),
                 cedula: formData.cedula.trim(),
                 aliases: processedAliases,
                 phone: formData.phone.trim() || undefined,
-                active: formData.active
+                active: formData.active,
+                joinedDate: isoDate
             });
         } else {
             addMember(
@@ -75,7 +86,8 @@ const Members: React.FC = () => {
                 formData.cedula.trim(),
                 processedAliases,
                 formData.phone.trim() || undefined,
-                formData.active
+                formData.active,
+                isoDate
             );
         }
         handleClose();
@@ -83,12 +95,26 @@ const Members: React.FC = () => {
 
     const handleEdit = (member: any) => {
         setEditingId(member.id);
+
+        // Extract YYYY-MM-DD correctly regardless of timezone storage
+        let dateStr = new Date().toISOString().split('T')[0];
+        if (member.joinedDate) {
+            // Create a Date object from the stored string
+            const dateObj = new Date(member.joinedDate);
+            // Get the local date parts to populate the form input
+            const year = dateObj.getFullYear();
+            const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+            const day = String(dateObj.getDate()).padStart(2, '0');
+            dateStr = `${year}-${month}-${day}`;
+        }
+
         setFormData({
             name: member.name,
             cedula: member.cedula || '',
             aliases: member.aliases && member.aliases.length > 0 ? member.aliases : [''],
             phone: member.phone || '',
-            active: member.active
+            active: member.active,
+            joinedDate: dateStr
         });
         setIsModalOpen(true);
     };
@@ -109,7 +135,7 @@ const Members: React.FC = () => {
     const handleClose = () => {
         setIsModalOpen(false);
         setEditingId(null);
-        setFormData({ name: '', cedula: '', aliases: [''], phone: '', active: true });
+        setFormData({ name: '', cedula: '', aliases: [''], phone: '', active: true, joinedDate: new Date().toISOString().split('T')[0] });
         setCedulaError('');
     };
 
@@ -128,11 +154,257 @@ const Members: React.FC = () => {
         setFormData({ ...formData, aliases: newAliases });
     };
 
-    const filteredMembers = members.filter(m =>
-        m.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (m.aliases && m.aliases.some(a => a.toLowerCase().includes(searchTerm.toLowerCase()))) ||
-        (m.cedula && m.cedula.includes(searchTerm))
-    );
+    // Obtener lista de años únicos de los socios
+    const availableYears = Array.from(
+        new Set(
+            members
+                .filter(m => m.joinedDate)
+                .map(m => new Date(m.joinedDate!).getFullYear())
+        )
+    ).sort((a, b) => b - a); // Ordenar de más reciente a más antiguo
+
+    const filteredMembers = members.filter(m => {
+        // Filtro por búsqueda
+        const matchesSearch = m.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (m.aliases && m.aliases.some(a => a.toLowerCase().includes(searchTerm.toLowerCase()))) ||
+            (m.cedula && m.cedula.includes(searchTerm));
+
+        // Filtro por año
+        const matchesYear = selectedYear === 'all' ||
+            (m.joinedDate && new Date(m.joinedDate).getFullYear().toString() === selectedYear);
+
+        return matchesSearch && matchesYear;
+    });
+
+    const handlePrintMembers = () => {
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) return;
+
+        const membersToShow = filteredMembers; // Usar la lista filtrada
+
+        const printContent = `
+            <!DOCTYPE html>
+            <html>
+                <head>
+                    <title>Lista de Socios - Banquito</title>
+                    <style>
+                        * {
+                            margin: 0;
+                        padding: 0;
+                        box-sizing: border-box;
+                    }
+                        body {
+                            font - family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                        padding: 40px;
+                        color: #1e293b;
+                    }
+                        .header {
+                            text - align: center;
+                        margin-bottom: 30px;
+                        border-bottom: 3px solid #6366f1;
+                        padding-bottom: 20px;
+                    }
+                        .header h1 {
+                            font - size: 28px;
+                        color: #6366f1;
+                        margin-bottom: 5px;
+                    }
+                        .header p {
+                            color: #64748b;
+                        font-size: 14px;
+                    }
+                        .filter-info {
+                            background: #f1f5f9;
+                        padding: 10px 15px;
+                        border-radius: 8px;
+                        margin-bottom: 20px;
+                        text-align: center;
+                        font-size: 13px;
+                        color: #475569;
+                    }
+                        .stats {
+                            display: flex;
+                        justify-content: space-around;
+                        margin-bottom: 30px;
+                        padding: 15px;
+                        background: #f8fafc;
+                        border-radius: 8px;
+                    }
+                        .stat-item {
+                            text - align: center;
+                    }
+                        .stat-item .label {
+                            font - size: 12px;
+                        color: #64748b;
+                        text-transform: uppercase;
+                        letter-spacing: 0.5px;
+                    }
+                        .stat-item .value {
+                            font - size: 24px;
+                        font-weight: bold;
+                        color: #6366f1;
+                    }
+                        table {
+                            width: 100%;
+                        border-collapse: collapse;
+                        margin-bottom: 20px;
+                    }
+                        thead {
+                            background: #6366f1;
+                        color: white;
+                    }
+                        th {
+                            padding: 12px;
+                        text-align: left;
+                        font-weight: 600;
+                        font-size: 13px;
+                        text-transform: uppercase;
+                        letter-spacing: 0.5px;
+                    }
+                        td {
+                            padding: 12px;
+                        border-bottom: 1px solid #e2e8f0;
+                        font-size: 14px;
+                    }
+                        tbody tr:hover {
+                            background: #f8fafc;
+                    }
+                        .status {
+                            display: inline-block;
+                        padding: 4px 12px;
+                        border-radius: 12px;
+                        font-size: 12px;
+                        font-weight: 600;
+                    }
+                        .status.active {
+                            background: #d1fae5;
+                        color: #065f46;
+                    }
+                        .status.inactive {
+                            background: #fee2e2;
+                        color: #991b1b;
+                    }
+                        .aliases {
+                            display: flex;
+                        flex-wrap: wrap;
+                        gap: 4px;
+                    }
+                        .alias-badge {
+                            background: #ede9fe;
+                        color: #7c3aed;
+                        padding: 2px 8px;
+                        border-radius: 8px;
+                        font-size: 11px;
+                        font-weight: 500;
+                    }
+                        .footer {
+                            margin - top: 30px;
+                        text-align: center;
+                        color: #94a3b8;
+                        font-size: 12px;
+                        border-top: 1px solid #e2e8f0;
+                        padding-top: 15px;
+                    }
+                        @media print {
+                            body {
+                            padding: 20px;
+                        }
+                        .no-print {
+                            display: none;
+                        }
+                    }
+                    </style>
+                </head>
+                <body>
+                    <div class="header">
+                        <h1>📋 Lista de Socios</h1>
+                        <p>Generado el ${new Date().toLocaleDateString('es-ES', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        })}</p>
+                    </div>
+
+                    ${selectedYear !== 'all' || searchTerm ? `
+                    <div class="filter-info">
+                        <strong>Filtros aplicados:</strong> 
+                        ${selectedYear !== 'all' ? `Año ${selectedYear}` : ''}
+                        ${selectedYear !== 'all' && searchTerm ? ' • ' : ''}
+                        ${searchTerm ? `Búsqueda: "${searchTerm}"` : ''}
+                    </div>
+                ` : ''}
+
+                    <div class="stats">
+                        <div class="stat-item">
+                            <div class="label">Total Socios</div>
+                            <div class="value">${membersToShow.length}</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="label">Activos</div>
+                            <div class="value">${membersToShow.filter(m => m.active).length}</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="label">Inactivos</div>
+                            <div class="value">${membersToShow.filter(m => !m.active).length}</div>
+                        </div>
+                    </div>
+
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Nombre</th>
+                                <th>Cédula</th>
+                                <th>Teléfono</th>
+                                <th>Acciones</th>
+                                <th>Fecha Ingreso</th>
+                                <th>Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${membersToShow.map((member, index) => `
+                            <tr>
+                                <td>${index + 1}</td>
+                                <td><strong>${member.name}</strong></td>
+                                <td>${member.cedula || 'Sin registro'}</td>
+                                <td>${member.phone || 'Sin registro'}</td>
+                                <td>
+                                    ${member.aliases && member.aliases.length > 0
+                ? `<div class="aliases">${member.aliases.map(alias =>
+                    `<span class="alias-badge">${alias}</span>`
+                ).join('')}</div>`
+                : 'Sin acciones'
+            }
+                                </td>
+                                <td>${member.joinedDate ? new Date(member.joinedDate).toLocaleDateString('es-ES') : 'Sin fecha'}</td>
+                                <td>
+                                    <span class="status ${member.active ? 'active' : 'inactive'}">
+                                        ${member.active ? '✓ Activo' : '✗ Inactivo'}
+                                    </span>
+                                </td>
+                            </tr>
+                        `).join('')}
+                        </tbody>
+                    </table>
+
+                    <div class="footer">
+                        <p>Sistema de Gestión de Banquito</p>
+                    </div>
+
+                    <script>
+                        window.onload = function() {
+                            window.print();
+                    }
+                    </script>
+                </body>
+            </html>
+            `;
+
+        printWindow.document.write(printContent);
+        printWindow.document.close();
+    };
 
     return (
         <div className="space-y-8">
@@ -141,23 +413,56 @@ const Members: React.FC = () => {
                     <h1 className="text-3xl font-bold text-slate-900">Gestión de Socios</h1>
                     <p className="text-slate-500 mt-1">Administra los miembros de tu banquito.</p>
                 </div>
-                <Button onClick={() => setIsModalOpen(true)} className="shadow-lg shadow-primary-500/20">
-                    <UserPlus size={20} className="mr-2" />
-                    Nuevo Socio
-                </Button>
+                <div className="flex gap-3">
+                    <Button
+                        onClick={handlePrintMembers}
+                        variant="ghost"
+                        className="shadow-lg shadow-slate-200/50 border-2 border-slate-200 hover:border-primary-300"
+                        title="Imprimir lista de socios"
+                    >
+                        <Printer size={20} className="mr-2" />
+                        Imprimir Lista
+                    </Button>
+                    <Button onClick={() => setIsModalOpen(true)} className="shadow-lg shadow-primary-500/20">
+                        <UserPlus size={20} className="mr-2" />
+                        Nuevo Socio
+                    </Button>
+                </div>
             </div>
 
             <Card className="overflow-hidden border-none shadow-xl shadow-slate-200/50" padding="none">
                 <div className="p-6 border-b border-slate-100 bg-white">
-                    <div className="relative max-w-md">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={20} />
-                        <input
-                            type="text"
-                            placeholder="Buscar por nombre, alias o cédula..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all"
-                        />
+                    <div className="flex flex-col sm:flex-row gap-4">
+                        <div className="relative flex-1 max-w-md">
+                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={20} />
+                            <input
+                                type="text"
+                                placeholder="Buscar por nombre, alias o cédula..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all"
+                            />
+                        </div>
+                        <div className="relative">
+                            <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={20} />
+                            <select
+                                value={selectedYear}
+                                onChange={(e) => setSelectedYear(e.target.value)}
+                                className="pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all appearance-none cursor-pointer min-w-[180px]"
+                            >
+                                <option value="all">Todos los años</option>
+                                {availableYears.map(year => (
+                                    <option key={year} value={year.toString()}>
+                                        Año {year}
+                                    </option>
+                                ))}
+                            </select>
+                            <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none text-slate-400">
+                                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -230,7 +535,7 @@ const Members: React.FC = () => {
                                         <td className="px-6 py-5">
                                             <div className="flex items-center text-slate-600">
                                                 <Calendar size={16} className="mr-2 text-slate-400" />
-                                                {member.joinedDate ? new Date(member.joinedDate).toLocaleDateString() : 'Sin fecha'}
+                                                {member.joinedDate ? new Date(member.joinedDate).toLocaleDateString('es-ES', { timeZone: 'UTC' }) : 'Sin fecha'}
                                             </div>
                                         </td>
                                         <td className="px-6 py-5 relative">
@@ -274,9 +579,11 @@ const Members: React.FC = () => {
                 isOpen={isModalOpen}
                 onClose={handleClose}
                 title={editingId ? 'Editar Socio' : 'Nuevo Socio'}
+                maxWidth="max-w-2xl"
             >
-                <form onSubmit={handleSubmit} className="space-y-5">
-                    <div>
+                <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Nombre y Activo - Full Width */}
+                    <div className="md:col-span-2">
                         <div className="flex justify-between items-center mb-2">
                             <label className="block text-sm font-medium text-slate-700">Nombre Completo *</label>
                             <div className="flex items-center gap-2 bg-slate-50 pl-3 pr-1 py-1 rounded-full border border-slate-200/60">
@@ -308,40 +615,73 @@ const Members: React.FC = () => {
                         />
                     </div>
 
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                            Cédula *
-                        </label>
-                        <input
-                            type="text"
-                            required
-                            value={formData.cedula}
-                            onChange={(e) => {
-                                // Only allow numbers
-                                const value = e.target.value.replace(/\D/g, '');
-                                // Limit to 10 digits
-                                if (value.length <= 10) {
-                                    setFormData({ ...formData, cedula: value });
-                                    setCedulaError('');
-                                }
-                            }}
-                            className={`w-full px-4 py-2.5 bg-slate-50 border rounded-xl focus:ring-2 focus:ring-primary-500/20 transition-all ${cedulaError ? 'border-red-500' : 'border-slate-200 focus:border-primary-500'
-                                }`}
-                            placeholder="Ej. 1234567890"
-                            maxLength={10}
-                            inputMode="numeric"
-                            pattern="\d{10}"
-                        />
-                        {cedulaError && (
-                            <p className="text-red-600 text-sm mt-1">{cedulaError}</p>
-                        )}
+                    {/* Columna Izquierda: Datos Personales */}
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                                Cédula *
+                            </label>
+                            <input
+                                type="text"
+                                required
+                                value={formData.cedula}
+                                onChange={(e) => {
+                                    const value = e.target.value.replace(/\D/g, '');
+                                    if (value.length <= 10) {
+                                        setFormData({ ...formData, cedula: value });
+                                        setCedulaError('');
+                                    }
+                                }}
+                                className={`w-full px-4 py-2.5 bg-slate-50 border rounded-xl focus:ring-2 focus:ring-primary-500/20 transition-all ${cedulaError ? 'border-red-500' : 'border-slate-200 focus:border-primary-500'
+                                    }`}
+                                placeholder="Ej. 1234567890"
+                                maxLength={10}
+                                inputMode="numeric"
+                                pattern="\d{10}"
+                            />
+                            {cedulaError && (
+                                <p className="text-red-600 text-sm mt-1">{cedulaError}</p>
+                            )}
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1.5">Teléfono (Opcional)</label>
+                            <input
+                                type="tel"
+                                value={formData.phone}
+                                onChange={(e) => {
+                                    const value = e.target.value.replace(/\D/g, '');
+                                    if (value.length <= 10) {
+                                        setFormData({ ...formData, phone: value });
+                                    }
+                                }}
+                                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all"
+                                placeholder="Ej. 0991234567"
+                                maxLength={10}
+                                inputMode="numeric"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                                Fecha de Ingreso *
+                            </label>
+                            <input
+                                type="date"
+                                required
+                                value={formData.joinedDate}
+                                onChange={(e) => setFormData({ ...formData, joinedDate: e.target.value })}
+                                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all"
+                            />
+                        </div>
                     </div>
 
+                    {/* Columna Derecha: Acciones/Alias */}
                     <div>
                         <div className="flex items-center justify-between mb-1.5">
                             <label className="block text-sm font-medium text-slate-700">
-                                Acciones/Letras (Opcional)
-                                <span className="text-xs text-slate-500 ml-2">Ej: Acción 1, Acción 2</span>
+                                Acciones/Letras
+                                <span className="text-xs text-slate-500 ml-2">(Opcional)</span>
                             </label>
                             <button
                                 type="button"
@@ -352,7 +692,7 @@ const Members: React.FC = () => {
                                 Agregar
                             </button>
                         </div>
-                        <div className="space-y-2">
+                        <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1 custom-scrollbar">
                             {formData.aliases.map((alias, index) => (
                                 <div key={index} className="flex gap-2">
                                     <input
@@ -377,27 +717,7 @@ const Members: React.FC = () => {
                         </div>
                     </div>
 
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1.5">Teléfono (Opcional)</label>
-                        <input
-                            type="tel"
-                            value={formData.phone}
-                            onChange={(e) => {
-                                // Only allow numbers
-                                const value = e.target.value.replace(/\D/g, '');
-                                // Limit to 10 digits
-                                if (value.length <= 10) {
-                                    setFormData({ ...formData, phone: value });
-                                }
-                            }}
-                            className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all"
-                            placeholder="Ej. 0991234567"
-                            maxLength={10}
-                            inputMode="numeric"
-                        />
-                    </div>
-
-                    <div className="flex justify-end space-x-3 pt-4">
+                    <div className="md:col-span-2 flex justify-end space-x-3 pt-4 border-t border-slate-100 mt-2">
                         <Button
                             type="button"
                             variant="ghost"

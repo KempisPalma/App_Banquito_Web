@@ -24,7 +24,7 @@ interface BanquitoContextType {
     updateUser: (id: string, data: Partial<User>) => Promise<void>;
     deleteUser: (id: string) => Promise<void>;
 
-    addMember: (name: string, cedula?: string, aliases?: string[], phone?: string, active?: boolean) => Promise<void>;
+    addMember: (name: string, cedula?: string, aliases?: string[], phone?: string, active?: boolean, joinedDate?: string) => Promise<void>;
     updateMember: (id: string, data: Partial<Member>) => Promise<void>;
     deleteMember: (id: string) => Promise<void>;
 
@@ -200,12 +200,12 @@ export const BanquitoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
 
     // ==================== MEMBERS ====================
-    const addMember = async (name: string, cedula?: string, aliases?: string[], phone?: string, active: boolean = true) => {
+    const addMember = async (name: string, cedula?: string, aliases?: string[], phone?: string, active: boolean = true, joinedDate?: string) => {
         try {
             const res = await fetch(`${API_BASE}/members`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, cedula, aliases, phone, active })
+                body: JSON.stringify({ name, cedula, aliases, phone, active, joinedDate })
             });
             if (res.ok) {
                 const newMember = await res.json();

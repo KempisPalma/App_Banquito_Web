@@ -266,28 +266,35 @@ app.get('/api/members', async (req, res) => {
         const { data: members, error } = await supabase.from('members').select('*').order('joined_date', { ascending: true, nullsFirst: true });
         if (error) throw error;
 
-        if (members.length > 0) {
-            console.log("Member keys:", Object.keys(members[0]));
-        }
-
-        members.forEach(m => {
-            if (typeof m.aliases === 'string') {
-                try { m.aliases = JSON.parse(m.aliases); } catch (e) { m.aliases = []; }
+        const transformedMembers = members.map(m => {
+            let aliases = m.aliases || [];
+            if (typeof aliases === 'string') {
+                try { aliases = JSON.parse(aliases); } catch (e) { aliases = []; }
             }
+            return {
+                id: m.id,
+                name: m.name,
+                cedula: m.cedula,
+                aliases: aliases,
+                phone: m.phone,
+                active: m.active,
+                joinedDate: m.joined_date // Transform snake_case to camelCase
+            };
         });
-        res.json(members);
+        res.json(transformedMembers);
     } catch (err) {
         handleError(res, err);
     }
 });
 
 app.post('/api/members', async (req, res) => {
-    const { name, cedula, aliases, phone, active } = req.body;
+    const { name, cedula, aliases, phone, active, joinedDate } = req.body;
 
 
 
     const id = uuidv4();
-    const joinedDate = new Date().toISOString();
+    // Use provided joinedDate or default to current date
+    const finalJoinedDate = joinedDate || new Date().toISOString();
 
     try {
         // Insert Member
@@ -301,7 +308,7 @@ app.post('/api/members', async (req, res) => {
                 aliases: aliases || [],
                 phone: phone || null,
                 active: active ? true : false,
-                joined_date: joinedDate
+                joined_date: finalJoinedDate
             });
 
         if (error) throw error;
@@ -343,17 +350,24 @@ app.post('/api/members', async (req, res) => {
 
 app.put('/api/members/:id', async (req, res) => {
     const { id } = req.params;
-    const { name, cedula, aliases, phone, active } = req.body;
+    const { name, cedula, aliases, phone, active, joinedDate } = req.body;
     try {
+        const updateData = {
+            name,
+            cedula: cedula || null,
+            aliases: aliases || [],
+            phone: phone || null,
+            active: active ? true : false
+        };
+
+        // Only update joined_date if provided
+        if (joinedDate) {
+            updateData.joined_date = joinedDate;
+        }
+
         const { error } = await supabase
             .from('members')
-            .update({
-                name,
-                cedula: cedula || null,
-                aliases: aliases || [],
-                phone: phone || null,
-                active: active ? true : false
-            })
+            .update(updateData)
             .eq('id', id);
 
         if (error) throw error;
@@ -367,14 +381,10 @@ app.put('/api/members/:id', async (req, res) => {
         if (fetchError) console.error("Error fetching existing MAs:", fetchError);
 
         if (allActivities) {
-            console.log("Syncing activities for member:", id);
-            console.log("Aliases received:", aliases);
 
             const identities = (aliases && aliases.length > 0)
                 ? aliases.map(alias => ({ memberId: id, actionAlias: alias }))
                 : [{ memberId: id, actionAlias: null }];
-
-            console.log("Identities to check:", identities);
 
             const toInsert = [];
 
