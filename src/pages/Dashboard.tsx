@@ -238,9 +238,14 @@ const Dashboard: React.FC = () => {
                                 <span>Por Cobrar (Actividades):</span>
                                 <span>${pendingActivitiesAmount.toFixed(2)}</span>
                             </div>
-                            <div className="pt-2 mt-2 border-t border-dashed border-emerald-200 flex justify-between font-bold text-emerald-700">
-                                <span>Proyección Total:</span>
-                                <span>${projectedTotal.toFixed(2)}</span>
+                            <div className="pt-3 mt-3 border-t border-dashed border-emerald-200">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-emerald-800 font-bold">Total Esperado (Final):</span>
+                                    <span className="text-lg font-black text-emerald-600">${projectedTotal.toFixed(2)}</span>
+                                </div>
+                                <p className="text-[10px] text-emerald-600/80 mt-0.5 text-right">
+                                    (Caja + Préstamos + Actividades)
+                                </p>
                             </div>
                         </div>
                     </StatCard>

@@ -190,121 +190,122 @@ const Members: React.FC = () => {
                     <style>
                         * {
                             margin: 0;
-                        padding: 0;
-                        box-sizing: border-box;
-                    }
+                            padding: 0;
+                            box-sizing: border-box;
+                        }
                         body {
-                            font - family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                        padding: 40px;
-                        color: #1e293b;
-                    }
+                            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                            padding: 40px;
+                            color: #1e293b;
+                        }
                         .header {
-                            text - align: center;
-                        margin-bottom: 30px;
-                        border-bottom: 3px solid #6366f1;
-                        padding-bottom: 20px;
-                    }
+                            text-align: center;
+                            margin-bottom: 30px;
+                            border-bottom: 3px solid #6366f1;
+                            padding-bottom: 20px;
+                        }
                         .header h1 {
-                            font - size: 28px;
-                        color: #6366f1;
-                        margin-bottom: 5px;
-                    }
+                            font-size: 28px;
+                            color: #6366f1;
+                            margin-bottom: 5px;
+                        }
                         .header p {
                             color: #64748b;
-                        font-size: 14px;
-                    }
+                            font-size: 14px;
+                        }
                         .filter-info {
                             background: #f1f5f9;
-                        padding: 10px 15px;
-                        border-radius: 8px;
-                        margin-bottom: 20px;
-                        text-align: center;
-                        font-size: 13px;
-                        color: #475569;
-                    }
+                            padding: 10px 15px;
+                            border-radius: 8px;
+                            margin-bottom: 20px;
+                            text-align: center;
+                            font-size: 13px;
+                            color: #475569;
+                        }
                         .stats {
                             display: flex;
-                        justify-content: space-around;
-                        margin-bottom: 30px;
-                        padding: 15px;
-                        background: #f8fafc;
-                        border-radius: 8px;
-                    }
+                            justify-content: space-around;
+                            margin-bottom: 30px;
+                            padding: 15px;
+                            background: #f8fafc;
+                            border-radius: 8px;
+                        }
                         .stat-item {
-                            text - align: center;
-                    }
+                            text-align: center;
+                            flex: 1;
+                        }
                         .stat-item .label {
-                            font - size: 12px;
-                        color: #64748b;
-                        text-transform: uppercase;
-                        letter-spacing: 0.5px;
-                    }
+                            font-size: 12px;
+                            color: #64748b;
+                            text-transform: uppercase;
+                            letter-spacing: 0.5px;
+                        }
                         .stat-item .value {
-                            font - size: 24px;
-                        font-weight: bold;
-                        color: #6366f1;
-                    }
+                            font-size: 24px;
+                            font-weight: bold;
+                            color: #6366f1;
+                        }
                         table {
                             width: 100%;
-                        border-collapse: collapse;
-                        margin-bottom: 20px;
-                    }
+                            border-collapse: collapse;
+                            margin-bottom: 20px;
+                        }
                         thead {
                             background: #6366f1;
-                        color: white;
-                    }
+                            color: white;
+                        }
                         th {
                             padding: 12px;
-                        text-align: left;
-                        font-weight: 600;
-                        font-size: 13px;
-                        text-transform: uppercase;
-                        letter-spacing: 0.5px;
-                    }
+                            text-align: left;
+                            font-weight: 600;
+                            font-size: 13px;
+                            text-transform: uppercase;
+                            letter-spacing: 0.5px;
+                        }
                         td {
                             padding: 12px;
-                        border-bottom: 1px solid #e2e8f0;
-                        font-size: 14px;
-                    }
+                            border-bottom: 1px solid #e2e8f0;
+                            font-size: 14px;
+                        }
                         tbody tr:hover {
                             background: #f8fafc;
-                    }
+                        }
                         .status {
                             display: inline-block;
-                        padding: 4px 12px;
-                        border-radius: 12px;
-                        font-size: 12px;
-                        font-weight: 600;
-                    }
+                            padding: 4px 12px;
+                            border-radius: 12px;
+                            font-size: 12px;
+                            font-weight: 600;
+                        }
                         .status.active {
                             background: #d1fae5;
-                        color: #065f46;
-                    }
+                            color: #065f46;
+                        }
                         .status.inactive {
                             background: #fee2e2;
-                        color: #991b1b;
-                    }
+                            color: #991b1b;
+                        }
                         .aliases {
                             display: flex;
-                        flex-wrap: wrap;
-                        gap: 4px;
-                    }
+                            flex-wrap: wrap;
+                            gap: 4px;
+                        }
                         .alias-badge {
                             background: #ede9fe;
-                        color: #7c3aed;
-                        padding: 2px 8px;
-                        border-radius: 8px;
-                        font-size: 11px;
-                        font-weight: 500;
-                    }
+                            color: #7c3aed;
+                            padding: 2px 8px;
+                            border-radius: 8px;
+                            font-size: 11px;
+                            font-weight: 500;
+                        }
                         .footer {
-                            margin - top: 30px;
-                        text-align: center;
-                        color: #94a3b8;
-                        font-size: 12px;
-                        border-top: 1px solid #e2e8f0;
-                        padding-top: 15px;
-                    }
+                            margin-top: 30px;
+                            text-align: center;
+                            color: #94a3b8;
+                            font-size: 12px;
+                            border-top: 1px solid #e2e8f0;
+                            padding-top: 15px;
+                        }
                         @media print {
                             body {
                             padding: 20px;
