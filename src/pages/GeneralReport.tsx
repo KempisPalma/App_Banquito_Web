@@ -204,6 +204,20 @@ const GeneralReport: React.FC = () => {
 
     const selectedReportItem = selectedMemberId ? reportData.find(r => r.uniqueId === selectedMemberId) : null;
 
+    // Dynamic Title for Printing
+    React.useEffect(() => {
+        const originalTitle = document.title;
+
+        if (selectedReportItem) {
+            const actionPart = selectedReportItem.actionAlias ? ` - ${selectedReportItem.actionAlias}` : '';
+            document.title = `Reporte - ${selectedReportItem.name}${actionPart}`;
+        }
+
+        return () => {
+            document.title = originalTitle;
+        };
+    }, [selectedReportItem]);
+
     return (
         <div className="space-y-8 max-w-[1600px] mx-auto">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 pb-6 border-b border-slate-200/60">
