@@ -90,6 +90,7 @@ const Dashboard: React.FC = () => {
     const navigate = useNavigate();
     const { members, weeklyPayments, loans, monthlyFees, activities, memberActivities, currentUser } = useBanquito();
     const [isMembersModalOpen, setIsMembersModalOpen] = React.useState(false);
+    const [isSavingsModalOpen, setIsSavingsModalOpen] = React.useState(false);
 
     const isSocio = currentUser?.role === 'socio';
 
@@ -224,31 +225,8 @@ const Dashboard: React.FC = () => {
                         value={`$${totalSavings.toFixed(2)}`}
                         icon={DollarSign}
                         color="bg-emerald-500"
-                    >
-                        <div className="space-y-1 text-xs">
-                            <div className="flex justify-between text-slate-500">
-                                <span>Dinero en Caja:</span>
-                                <span>${totalSavings.toFixed(2)}</span>
-                            </div>
-                            <div className="flex justify-between text-slate-500">
-                                <span>Por Cobrar (Préstamos):</span>
-                                <span>${pendingLoansAmount.toFixed(2)}</span>
-                            </div>
-                            <div className="flex justify-between text-slate-500">
-                                <span>Por Cobrar (Actividades):</span>
-                                <span>${pendingActivitiesAmount.toFixed(2)}</span>
-                            </div>
-                            <div className="pt-3 mt-3 border-t border-dashed border-emerald-200">
-                                <div className="flex justify-between items-center">
-                                    <span className="text-emerald-800 font-bold">Total Esperado (Final):</span>
-                                    <span className="text-lg font-black text-emerald-600">${projectedTotal.toFixed(2)}</span>
-                                </div>
-                                <p className="text-[10px] text-emerald-600/80 mt-0.5 text-right">
-                                    (Caja + Préstamos + Actividades)
-                                </p>
-                            </div>
-                        </div>
-                    </StatCard>
+                        onClick={() => setIsSavingsModalOpen(true)}
+                    />
                 </motion.div>
                 <motion.div variants={item}>
                     <StatCard
@@ -512,6 +490,60 @@ const Dashboard: React.FC = () => {
                     >
                         Cerrar
                     </button>
+                </div>
+            </Modal>
+
+            {/* Savings Detail Modal */}
+            <Modal
+                isOpen={isSavingsModalOpen}
+                onClose={() => setIsSavingsModalOpen(false)}
+                title={isSocio ? "Detalle de Mi Ahorro" : "Detalle Financiero General"}
+            >
+                <div className="space-y-6">
+                    <div className="grid grid-cols-1 gap-4">
+                        <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-100">
+                            <p className="text-sm text-emerald-600 font-medium mb-1">Dinero en Caja (Disponible)</p>
+                            <p className="text-2xl font-bold text-emerald-700">${totalSavings.toFixed(2)}</p>
+                            <p className="text-xs text-emerald-500/80 mt-1">Total recaudado hasta la fecha</p>
+                        </div>
+
+                        <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                            <div className="flex justify-between items-center mb-2">
+                                <p className="text-sm text-slate-500 font-medium">Por Cobrar - Préstamos</p>
+                                <span className="text-xs font-bold bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">Pendiente</span>
+                            </div>
+                            <p className="text-xl font-bold text-slate-700">${pendingLoansAmount.toFixed(2)}</p>
+                            <p className="text-xs text-slate-400 mt-1">Capital + Intereses no pagados</p>
+                        </div>
+
+                        <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                            <div className="flex justify-between items-center mb-2">
+                                <p className="text-sm text-slate-500 font-medium">Por Cobrar - Actividades</p>
+                                <span className="text-xs font-bold bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">Pendiente</span>
+                            </div>
+                            <p className="text-xl font-bold text-slate-700">${pendingActivitiesAmount.toFixed(2)}</p>
+                            <p className="text-xs text-slate-400 mt-1">Tickets/Rifas no pagados</p>
+                        </div>
+
+                        <div className="mt-2 pt-4 border-t border-dashed border-slate-200">
+                            <div className="flex justify-between items-end">
+                                <div>
+                                    <p className="text-sm font-bold text-emerald-800 uppercase tracking-wide">Total Esperado (Final)</p>
+                                    <p className="text-[10px] text-slate-400">Si se cobra todo lo pendiente</p>
+                                </div>
+                                <p className="text-3xl font-black text-emerald-600 leading-none">${projectedTotal.toFixed(2)}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex justify-end pt-2">
+                        <button
+                            onClick={() => setIsSavingsModalOpen(false)}
+                            className="px-4 py-2 bg-emerald-600 text-white font-medium rounded-lg hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-500/20"
+                        >
+                            Entendido
+                        </button>
+                    </div>
                 </div>
             </Modal>
         </motion.div>

@@ -201,6 +201,33 @@ const GeneralReport: React.FC = () => {
     const totalAssets = grandTotalSavings + loanStats.interestCollected + activityStats.netProfit;
     const cashOnHand = totalAssets - loanStats.principalOutstanding;
 
+    const pendingLoansAmount = useMemo(() => {
+        return loans
+            .filter(l => l.status === 'active' || l.status === 'overdue')
+            .reduce((acc, loan) => {
+                if (loan.status === 'paid') return acc;
+                const totalPaid = loan.payments.reduce((p, c) => p + c.amount, 0);
+                const interestAmount = loan.amount * (loan.interestRate / 100);
+                const totalDue = loan.amount + interestAmount;
+                return acc + (totalDue - totalPaid);
+            }, 0);
+    }, [loans]);
+
+    const pendingActivitiesAmount = useMemo(() => {
+        const yearActivities = activities.filter(a => new Date(a.date).getFullYear() === selectedYear);
+        return yearActivities.reduce((total, activity) => {
+            const relevantRecords = memberActivities.filter(ma => ma.activityId === activity.id);
+            const pendingForActivity = relevantRecords.reduce((sum, ma) => {
+                const expected = activity.ticketPrice * activity.totalTicketsPerMember;
+                const pending = Math.max(0, expected - ma.amountPaid);
+                return sum + pending;
+            }, 0);
+            return total + pendingForActivity;
+        }, 0);
+    }, [activities, memberActivities, selectedYear]);
+
+    const projectedTotal = cashOnHand + pendingLoansAmount + pendingActivitiesAmount;
+
 
     const selectedReportItem = selectedMemberId ? reportData.find(r => r.uniqueId === selectedMemberId) : null;
 
@@ -263,13 +290,34 @@ const GeneralReport: React.FC = () => {
                     color="bg-blue-500"
                     subtitle="Total acumulado + Ganancias"
                 >
-                    <div className="flex justify-between items-center text-sm">
-                        <span className="text-slate-500">Dinero en Caja (Disponible)</span>
-                        <span className="font-bold text-slate-700">${cashOnHand.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between items-center text-sm mt-1">
-                        <span className="text-slate-500">Dinero Prestado/Invertido</span>
-                        <span className="font-bold text-slate-700">${loanStats.principalOutstanding.toFixed(2)}</span>
+                    <div className="space-y-1 text-xs">
+                        <div className="flex justify-between items-center">
+                            <span className="text-slate-500">Dinero en Caja (Disponible)</span>
+                            <span className="font-bold text-slate-700">${cashOnHand.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                            <span className="text-slate-500">Dinero Prestado/Invertido</span>
+                            <span className="font-bold text-slate-700">${loanStats.principalOutstanding.toFixed(2)}</span>
+                        </div>
+
+                        <div className="flex justify-between items-center pt-1 border-t border-slate-100 mt-1">
+                            <span className="text-slate-500">Por Cobrar (Préstamos)</span>
+                            <span className="font-bold text-slate-700">${pendingLoansAmount.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                            <span className="text-slate-500">Por Cobrar (Actividades)</span>
+                            <span className="font-bold text-slate-700">${pendingActivitiesAmount.toFixed(2)}</span>
+                        </div>
+
+                        <div className="pt-2 mt-2 border-t border-dashed border-blue-200">
+                            <div className="flex justify-between items-center">
+                                <span className="text-blue-800 font-bold">Total Esperado (Final):</span>
+                                <span className="text-lg font-black text-blue-600">${projectedTotal.toFixed(2)}</span>
+                            </div>
+                            <p className="text-[10px] text-blue-500/80 mt-0.5 text-right">
+                                (Caja + Préstamos + Actividades)
+                            </p>
+                        </div>
                     </div>
                 </StatCard>
 
