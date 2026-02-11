@@ -159,6 +159,7 @@ const Activities: React.FC = () => {
     const totalRevenue = currentMemberActivities.reduce((acc, curr) => acc + (curr.ticketsSold * (selectedActivity?.ticketPrice || 0)), 0);
     const totalInvestment = selectedActivity?.investment || 0;
     const netProfit = totalRevenue - totalInvestment;
+    const expectedProfit = (currentMemberActivities.length * (selectedActivity?.ticketPrice || 0) * (selectedActivity?.totalTicketsPerMember || 0)) - totalInvestment;
 
     const allTicketsPaid = currentMemberActivities.every(ma =>
         (ma.ticketsSold + ma.ticketsReturned) === (selectedActivity?.totalTicketsPerMember || 0)
@@ -390,8 +391,13 @@ const Activities: React.FC = () => {
                                         </div>
                                         <div className={clsx("p-4 rounded-2xl border shadow-sm", netProfit >= 0 ? "bg-emerald-50 border-emerald-100" : "bg-red-50 border-red-100")}>
                                             <div className={clsx("text-sm mb-1", netProfit >= 0 ? "text-emerald-700" : "text-red-700")}>Ganancia Neta</div>
-                                            <div className={clsx("text-2xl font-black", netProfit >= 0 ? "text-emerald-700" : "text-red-700")}>
-                                                ${netProfit.toFixed(2)}
+                                            <div className="flex items-baseline gap-3">
+                                                <div className={clsx("text-2xl font-black", netProfit >= 0 ? "text-emerald-700" : "text-red-700")}>
+                                                    ${netProfit.toFixed(2)}
+                                                </div>
+                                                <div className={clsx("text-sm font-semibold border-l pl-3 ml-1", netProfit >= 0 ? "text-emerald-600/70 border-emerald-200" : "text-red-600/70 border-red-200")}>
+                                                    Esperado: ${expectedProfit.toFixed(2)}
+                                                </div>
                                             </div>
                                             <div className={clsx("text-xs font-medium mt-1", netProfit >= 0 ? "text-emerald-600" : "text-red-600")}>
                                                 {netProfit >= 0 ? "Beneficio real" : "Pérdida"}

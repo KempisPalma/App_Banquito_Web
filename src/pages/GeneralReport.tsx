@@ -219,7 +219,8 @@ const GeneralReport: React.FC = () => {
             const relevantRecords = memberActivities.filter(ma => ma.activityId === activity.id);
             const pendingForActivity = relevantRecords.reduce((sum, ma) => {
                 const expected = activity.ticketPrice * activity.totalTicketsPerMember;
-                const pending = Math.max(0, expected - ma.amountPaid);
+                const paid = ma.ticketsSold * activity.ticketPrice;
+                const pending = Math.max(0, expected - paid);
                 return sum + pending;
             }, 0);
             return total + pendingForActivity;
@@ -295,10 +296,7 @@ const GeneralReport: React.FC = () => {
                             <span className="text-slate-500">Dinero en Caja (Disponible)</span>
                             <span className="font-bold text-slate-700">${cashOnHand.toFixed(2)}</span>
                         </div>
-                        <div className="flex justify-between items-center">
-                            <span className="text-slate-500">Dinero Prestado/Invertido</span>
-                            <span className="font-bold text-slate-700">${loanStats.principalOutstanding.toFixed(2)}</span>
-                        </div>
+
 
                         <div className="flex justify-between items-center pt-1 border-t border-slate-100 mt-1">
                             <span className="text-slate-500">Por Cobrar (Préstamos)</span>
