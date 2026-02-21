@@ -91,6 +91,8 @@ const Dashboard: React.FC = () => {
     const { members, weeklyPayments, loans, monthlyFees, activities, memberActivities, currentUser } = useBanquito();
     const [isMembersModalOpen, setIsMembersModalOpen] = React.useState(false);
     const [isSavingsModalOpen, setIsSavingsModalOpen] = React.useState(false);
+    const [isLoansModalOpen, setIsLoansModalOpen] = React.useState(false);
+    const [isActivitiesModalOpen, setIsActivitiesModalOpen] = React.useState(false);
 
     const isSocio = currentUser?.role === 'socio';
 
@@ -155,23 +157,77 @@ const Dashboard: React.FC = () => {
         }, 0);
     }, [memberActivities, activities, isSocio, currentUser]);
 
-    const projectedTotal = totalSavings + pendingLoansAmount + pendingActivitiesAmount;
+    // Interest collected (same logic as GeneralReport)
+    const interestCollected = React.useMemo(() => {
+        return filteredLoans.reduce((total, loan) => {
+            const interestPayments = loan.payments
+                .filter(p => p.paymentType === 'interest')
+                .reduce((acc, curr) => acc + curr.amount, 0);
+            return total + interestPayments;
+        }, 0);
+    }, [filteredLoans]);
+
+    // Principal currently outstanding (money that's been lent and not yet repaid)
+    const principalOutstanding = React.useMemo(() => {
+        return filteredLoans
+            .filter(l => l.status === 'active')
+            .reduce((total, loan) => {
+                const principalPaid = loan.payments
+                    .filter(p => p.paymentType === 'principal')
+                    .reduce((acc, curr) => acc + curr.amount, 0);
+                return total + (loan.amount - principalPaid);
+            }, 0);
+    }, [filteredLoans]);
+
+    // Activity net profit
+    const activityNetProfit = React.useMemo(() => {
+        const relevantMAs = isSocio && currentUser?.memberId
+            ? memberActivities.filter(ma => ma.memberId === currentUser.memberId)
+            : memberActivities;
+        const totalRevenue = activities.reduce((total, activity) => {
+            const sales = relevantMAs
+                .filter(ma => ma.activityId === activity.id)
+                .reduce((acc, curr) => acc + (curr.ticketsSold * activity.ticketPrice), 0);
+            return total + sales;
+        }, 0);
+        const totalInvestment = activities.reduce((acc, curr) => acc + ((curr as any).investment || 0), 0);
+        return totalRevenue - totalInvestment;
+    }, [activities, memberActivities, isSocio, currentUser]);
+
+    // Cash on Hand = Total Savings + Interest Collected + Activity Net Profit - Principal Outstanding
+    // (same formula as GeneralReport's cashOnHand)
+    const cashOnHand = React.useMemo(() => {
+        const totalAssets = totalSavings + interestCollected + activityNetProfit;
+        return totalAssets - principalOutstanding;
+    }, [totalSavings, interestCollected, activityNetProfit, principalOutstanding]);
+
+    const projectedTotal = cashOnHand + pendingLoansAmount + pendingActivitiesAmount;
 
     const activeLoans = React.useMemo(() => {
         return filteredLoans.filter(l => l.status !== 'paid').length;
     }, [filteredLoans]);
 
-    const totalLoaned = React.useMemo(() => {
-        return filteredLoans.reduce((acc, curr) => acc + curr.amount, 0);
-    }, [filteredLoans]);
+
 
     const totalActions = React.useMemo(() => {
         return members.reduce((acc, m) => {
-            // If member has aliases, count them. Otherwise count as 1.
             const actionCount = (m.aliases && m.aliases.length > 0) ? m.aliases.length : 1;
             return acc + actionCount;
         }, 0);
     }, [members]);
+
+    // Activities with at least one member that hasn't completed all payments
+    const pendingActivities = React.useMemo(() => {
+        return activities.filter(activity => {
+            const records = memberActivities.filter(ma => ma.activityId === activity.id);
+            if (records.length === 0) return false;
+            return records.some(ma => {
+                const expected = activity.ticketPrice * activity.totalTicketsPerMember;
+                const paid = ma.amountPaid ?? (ma.ticketsSold * activity.ticketPrice);
+                return paid < expected;
+            });
+        });
+    }, [activities, memberActivities]);
 
     const container = {
         hidden: { opacity: 0 },
@@ -221,8 +277,8 @@ const Dashboard: React.FC = () => {
                 </motion.div>
                 <motion.div variants={item}>
                     <StatCard
-                        title={isSocio ? "Mi Ahorro Total" : "Ahorro Total"}
-                        value={`$${totalSavings.toFixed(2)}`}
+                        title={isSocio ? "Mi Ahorro Total" : "Dinero en Caja"}
+                        value={`$${cashOnHand.toFixed(2)}`}
                         icon={DollarSign}
                         color="bg-emerald-500"
                         onClick={() => setIsSavingsModalOpen(true)}
@@ -234,14 +290,16 @@ const Dashboard: React.FC = () => {
                         value={activeLoans.toString()}
                         icon={AlertCircle}
                         color="bg-orange-500"
+                        onClick={() => setIsLoansModalOpen(true)}
                     />
                 </motion.div>
                 <motion.div variants={item}>
                     <StatCard
-                        title={isSocio ? "Mi Capital Prestado" : "Capital Prestado"}
-                        value={`$${totalLoaned.toFixed(2)}`}
-                        icon={TrendingUp}
+                        title={isSocio ? "Mis Actividades" : "Actividades Pendientes"}
+                        value={pendingActivities.length.toString()}
+                        icon={Activity}
                         color="bg-purple-500"
+                        onClick={() => setIsActivitiesModalOpen(true)}
                     />
                 </motion.div>
             </motion.div>
@@ -503,8 +561,8 @@ const Dashboard: React.FC = () => {
                     <div className="grid grid-cols-1 gap-4">
                         <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-100">
                             <p className="text-sm text-emerald-600 font-medium mb-1">Dinero en Caja (Disponible)</p>
-                            <p className="text-2xl font-bold text-emerald-700">${totalSavings.toFixed(2)}</p>
-                            <p className="text-xs text-emerald-500/80 mt-1">Total recaudado hasta la fecha</p>
+                            <p className="text-2xl font-bold text-emerald-700">${cashOnHand.toFixed(2)}</p>
+                            <p className="text-xs text-emerald-500/80 mt-1">Ahorros + Ganancias − Capital Prestado</p>
                         </div>
 
                         <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
@@ -544,6 +602,116 @@ const Dashboard: React.FC = () => {
                             Entendido
                         </button>
                     </div>
+                </div>
+            </Modal>
+
+            {/* Active Loans Modal */}
+            <Modal
+                isOpen={isLoansModalOpen}
+                onClose={() => setIsLoansModalOpen(false)}
+                title={isSocio ? "Mis Préstamos Activos" : "Préstamos Activos"}
+            >
+                <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+                    {filteredLoans.filter(l => l.status !== 'paid').length === 0 ? (
+                        <div className="text-center py-10 text-slate-400">
+                            <AlertCircle size={40} className="mx-auto mb-2 opacity-20" />
+                            <p className="text-sm">No hay préstamos activos</p>
+                        </div>
+                    ) : (
+                        filteredLoans.filter(l => l.status !== 'paid').map(loan => {
+                            const member = loan.borrowerType === 'member' ? members.find(m => m.id === loan.memberId) : null;
+                            const borrowerName = loan.borrowerType === 'member' ? (member?.name || 'Socio Desconocido') : loan.clientName;
+                            const totalPaid = loan.payments.reduce((acc, curr) => acc + curr.amount, 0);
+                            const interestAmount = loan.amount * (loan.interestRate / 100);
+                            const totalDue = loan.amount + interestAmount;
+                            const remaining = totalDue - totalPaid;
+                            const daysUntilDue = Math.ceil((new Date(loan.endDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+                            const isOverdue = daysUntilDue < 0;
+
+                            return (
+                                <div key={loan.id} className="flex items-center justify-between p-4 rounded-xl bg-slate-50 border border-slate-100 hover:border-orange-100 hover:bg-orange-50/30 transition-colors">
+                                    <div className="flex-1">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <p className="font-semibold text-slate-900">{borrowerName}</p>
+                                            {isOverdue && (
+                                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700">VENCIDO</span>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-4 text-xs text-slate-500">
+                                            <span>Vence: <span className={isOverdue ? 'text-red-500 font-bold' : ''}>{new Date(loan.endDate).toLocaleDateString()}</span></span>
+                                            <span>Tasa: {loan.interestRate}%</span>
+                                        </div>
+                                    </div>
+                                    <div className="text-right ml-4">
+                                        <p className="text-sm font-bold text-orange-600">${remaining.toFixed(2)}</p>
+                                        <p className="text-xs text-slate-400">pendiente</p>
+                                    </div>
+                                </div>
+                            );
+                        })
+                    )}
+                </div>
+                <div className="mt-6 flex justify-end">
+                    <button
+                        onClick={() => setIsLoansModalOpen(false)}
+                        className="px-4 py-2 bg-orange-600 text-white font-medium rounded-lg hover:bg-orange-700 transition-colors"
+                    >
+                        Cerrar
+                    </button>
+                </div>
+            </Modal>
+
+            {/* Pending Activities Modal */}
+            <Modal
+                isOpen={isActivitiesModalOpen}
+                onClose={() => setIsActivitiesModalOpen(false)}
+                title="Actividades con Pagos Pendientes"
+            >
+                <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+                    {pendingActivities.length === 0 ? (
+                        <div className="text-center py-10 text-slate-400">
+                            <Activity size={40} className="mx-auto mb-2 opacity-20" />
+                            <p className="text-sm">Todas las actividades están al día</p>
+                        </div>
+                    ) : (
+                        pendingActivities.map(activity => {
+                            const records = memberActivities.filter(ma => ma.activityId === activity.id);
+                            const totalExpected = records.reduce((acc, _ma) => acc + (activity.ticketPrice * activity.totalTicketsPerMember), 0);
+                            const totalPaid = records.reduce((acc, ma) => acc + (ma.amountPaid ?? (ma.ticketsSold * activity.ticketPrice)), 0);
+                            const totalPending = totalExpected - totalPaid;
+                            const pendingMembers = records.filter(ma => {
+                                const expected = activity.ticketPrice * activity.totalTicketsPerMember;
+                                const paid = ma.amountPaid ?? (ma.ticketsSold * activity.ticketPrice);
+                                return paid < expected;
+                            }).length;
+
+                            return (
+                                <div key={activity.id} className="p-4 rounded-xl bg-slate-50 border border-slate-100 hover:border-purple-100 hover:bg-purple-50/20 transition-colors">
+                                    <div className="flex items-start justify-between mb-2">
+                                        <div>
+                                            <p className="font-semibold text-slate-900">{activity.name}</p>
+                                            <p className="text-xs text-slate-500 mt-0.5">{new Date(activity.date).toLocaleDateString()}</p>
+                                        </div>
+                                        <span className="text-xs font-bold bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full whitespace-nowrap ml-2">
+                                            {pendingMembers} sin completar
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-xs text-slate-500 mt-2 pt-2 border-t border-slate-100">
+                                        <span>Recaudado: <span className="font-bold text-slate-700">${totalPaid.toFixed(2)}</span></span>
+                                        <span>Pendiente: <span className="font-bold text-purple-600">${totalPending.toFixed(2)}</span></span>
+                                    </div>
+                                </div>
+                            );
+                        })
+                    )}
+                </div>
+                <div className="mt-6 flex justify-end">
+                    <button
+                        onClick={() => setIsActivitiesModalOpen(false)}
+                        className="px-4 py-2 bg-purple-600 text-white font-medium rounded-lg hover:bg-purple-700 transition-colors"
+                    >
+                        Cerrar
+                    </button>
                 </div>
             </Modal>
         </motion.div>
