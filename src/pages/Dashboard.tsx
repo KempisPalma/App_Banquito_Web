@@ -141,8 +141,8 @@ const Dashboard: React.FC = () => {
     }, [filteredLoans]);
 
     // Calculate Pending Activities (Expected - Paid)
+    // Usa ticketsSold * ticketPrice como monto pagado, igual que en Activities.tsx
     const pendingActivitiesAmount = React.useMemo(() => {
-        // If socio, filter memberActivities specifically for them
         const relevantMAs = isSocio && currentUser?.memberId
             ? memberActivities.filter(ma => ma.memberId === currentUser.memberId)
             : memberActivities;
@@ -152,7 +152,8 @@ const Dashboard: React.FC = () => {
             if (!activity) return acc;
 
             const expected = activity.ticketPrice * activity.totalTicketsPerMember;
-            const pending = Math.max(0, expected - ma.amountPaid);
+            const paid = ma.ticketsSold * activity.ticketPrice;
+            const pending = Math.max(0, expected - paid);
             return acc + pending;
         }, 0);
     }, [memberActivities, activities, isSocio, currentUser]);
