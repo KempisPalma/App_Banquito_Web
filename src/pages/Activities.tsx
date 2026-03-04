@@ -378,8 +378,13 @@ const Activities: React.FC = () => {
                                             <div className="text-sm text-slate-500 mb-1">Recaudación Total</div>
                                             <div className="flex items-baseline gap-3">
                                                 <div className="text-2xl font-black text-slate-800">${totalRevenue.toFixed(2)}</div>
-                                                <div className="text-sm font-semibold text-slate-400 border-l pl-3 ml-1 border-slate-200">
-                                                    Esperado: ${(currentMemberActivities.length * selectedActivity.ticketPrice * selectedActivity.totalTicketsPerMember).toFixed(2)}
+                                                <div className="flex flex-col border-l pl-3 ml-1 border-slate-200">
+                                                    <span className="text-sm font-semibold text-slate-400">
+                                                        Esperado: ${(currentMemberActivities.length * selectedActivity.ticketPrice * selectedActivity.totalTicketsPerMember).toFixed(2)}
+                                                    </span>
+                                                    <span className="text-xs font-bold text-orange-500 mt-0.5">
+                                                        Pendiente: ${Math.max(0, (currentMemberActivities.length * selectedActivity.ticketPrice * selectedActivity.totalTicketsPerMember) - totalRevenue).toFixed(2)}
+                                                    </span>
                                                 </div>
                                             </div>
                                             <div className="text-xs text-emerald-600 font-medium mt-1">Ingresos brutos</div>

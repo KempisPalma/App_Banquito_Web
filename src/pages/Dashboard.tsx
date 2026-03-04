@@ -224,7 +224,7 @@ const Dashboard: React.FC = () => {
             if (records.length === 0) return false;
             return records.some(ma => {
                 const expected = activity.ticketPrice * activity.totalTicketsPerMember;
-                const paid = ma.amountPaid ?? (ma.ticketsSold * activity.ticketPrice);
+                const paid = ma.ticketsSold * activity.ticketPrice;
                 return paid < expected;
             });
         });
@@ -678,11 +678,11 @@ const Dashboard: React.FC = () => {
                         pendingActivities.map(activity => {
                             const records = memberActivities.filter(ma => ma.activityId === activity.id);
                             const totalExpected = records.reduce((acc, _ma) => acc + (activity.ticketPrice * activity.totalTicketsPerMember), 0);
-                            const totalPaid = records.reduce((acc, ma) => acc + (ma.amountPaid ?? (ma.ticketsSold * activity.ticketPrice)), 0);
-                            const totalPending = totalExpected - totalPaid;
+                            const totalPaid = records.reduce((acc, ma) => acc + (ma.ticketsSold * activity.ticketPrice), 0);
+                            const totalPending = Math.max(0, totalExpected - totalPaid);
                             const pendingMembers = records.filter(ma => {
                                 const expected = activity.ticketPrice * activity.totalTicketsPerMember;
-                                const paid = ma.amountPaid ?? (ma.ticketsSold * activity.ticketPrice);
+                                const paid = ma.ticketsSold * activity.ticketPrice;
                                 return paid < expected;
                             }).length;
 
